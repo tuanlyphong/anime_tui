@@ -65,9 +65,11 @@ _check_deps() {
 
 _pick_anime() {
   local mode="$1"
-
+  local query="${2:-}"
   if [[ "$mode" == "history" ]]; then
     $ANIME_CLI history | fzf \
+      --print-query \
+      --query "$query" \
       --expect=ctrl-s \
       --delimiter=$'\t' \
       --layout=reverse \
@@ -81,6 +83,8 @@ _pick_anime() {
       --bind 'ctrl-j:down,ctrl-k:up'
   else
     $ANIME_CLI search "" | fzf \
+      --print-query \
+      --query "$query" \
       --expect=ctrl-h \
       --delimiter=$'\t' \
       --layout=reverse \
@@ -164,21 +168,37 @@ _play() {
   _warn "Playing: $stream_url"
   $PLAYER $PLAYER_OPTS "$stream_url" >/dev/null 2>&1 &
 }
+
 # ── main loop ─────────────────────────────────────────────────────────────────
 run_tui() {
   _check_deps
 
   while true; do
-    local anime_line
     local mode="search"
+    local query=""
 
     while true; do
       local out key anime_line
 
-      mapfile -t out < <(_pick_anime "$mode") || exit 0
+      # With --print-query and --expect, fzf outputs 3 lines:
+      #   out[0] = the current query string
+      #   out[1] = the key that exited fzf (ctrl-h / ctrl-s / "" for Enter)
+      #   out[2] = the selected item
+      # If fzf exits via Escape/Ctrl-C it outputs nothing → array is empty.
+      # Capture fzf's exit code via the process substitution fd trick so
+      # an Escape (exit 130) still lets us exit cleanly.
+      local fzf_status
+      mapfile -t out < <(
+        _pick_anime "$mode" "$query"
+        printf '%d' $?
+      )
+      fzf_status="${out[-1]}"
+      unset 'out[-1]'
+      [[ "$fzf_status" -le 1 ]] || exit 0 # 0=ok 1=no match; 2+=error/abort
 
-      key="${out[0]}"
-      anime_line="${out[1]}"
+      query="${out[0]:-}"
+      key="${out[1]:-}"
+      anime_line="${out[2]:-}"
 
       case "$key" in
       ctrl-h)
@@ -198,10 +218,11 @@ run_tui() {
     tput smcup 2>/dev/null
     clear # <-- re-enter alt screen before any further output
 
-    local anime_url anime_title
+    local anime_url anime_title poster
     anime_url=$(printf '%s' "$anime_line" | cut -f2)
     anime_title=$(printf '%s' "$anime_line" | cut -f1)
     poster=$(printf '%s' "$anime_line" | cut -f3)
+
     while true; do
       local ep_line
       ep_line=$(_pick_episode "$anime_url" "$anime_title") || break
@@ -210,7 +231,7 @@ run_tui() {
       tput smcup 2>/dev/null
       clear # <-- re-enter again, before "Fetching stream…"
 
-      local ep_url stream
+      local ep_url ep_label stream
       ep_url=$(printf '%s' "$ep_line" | cut -f2)
       ep_label=$(printf '%s' "$ep_line" | cut -f1)
       local tmpfile rc
@@ -244,6 +265,5 @@ run_tui() {
 }
 
 run_tui
-#TODO: create history tab
 #TODO: optimize speed
 #TODO: refractor project
