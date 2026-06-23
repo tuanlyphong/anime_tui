@@ -2,8 +2,26 @@
 set -uo pipefail
 [ -f "$(dirname "$0")/.env" ] && source "$(dirname "$0")/.env"
 
+FZF_PREVIEW='
+img=$(printf "%s" {} | cut -f3)
+[ -n "$img" ] || exit 0
+file="$POSTER_CACHE/$(basename "$img")"
+[ -f "$file" ] || curl -Ls "$img" -o "$file" 2>/dev/null
+if command -v chafa >/dev/null; then
+  chafa --format symbols \
+    --size="${FZF_PREVIEW_COLUMNS}x${FZF_PREVIEW_LINES}" "$file"
+else
+  printf "[ install chafa for poster preview ]\n\n%s\n" "$img"
+fi
+'
+
 # ── config (override via env) ─────────────────────────────────────────────────
 POSTER_CACHE="${HOME}/.cache/anime_tui/posters"
+STATE_DIR="${HOME}/.cache/anime_tui"
+MODE_FILE="${STATE_DIR}/source"
+
+mkdir -p "$STATE_DIR"
+echo search >"$MODE_FILE"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANIME_CLI="${ANIME_CLI:-node ${SCRIPT_DIR}/anime.js}"
 PLAYER="${PLAYER:-mpv}"                      # any player command
@@ -17,7 +35,6 @@ export SHELL="$(command -v bash)"
 export ANIME_CLI POSTER_CACHE # needed inside fzf preview / reload shells
 
 # ── helpers ───────────────────────────────────────────────────────────────────
-
 _spinner() {
   local pid=$1 msg=$2
   local frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
@@ -45,31 +62,39 @@ _check_deps() {
 
 # ── stage 1 – pick an anime ───────────────────────────────────────────────────
 # stdout: the selected TSV line (title TAB url TAB poster)
+
 _pick_anime() {
-  $ANIME_CLI search "" | fzf \
-    --delimiter=$'\t' \
-    --layout=reverse \
-    --border \
-    --prompt 'Anime > ' \
-    --header 'Type to search  ·  Enter to select  ·  Esc to quit' \
-    --with-nth=1 \
-    --bind "start:reload($ANIME_CLI search {q} 2>/dev/null || true)" \
-    --bind "change:reload(sleep 0.3; $ANIME_CLI search {q} 2>/dev/null || true)" \
-    --preview '
-      img=$(printf "%s" {} | cut -f3)
-      [ -n "$img" ] || exit 0
-      file="$POSTER_CACHE/$(basename "$img")"
-      [ -f "$file" ] || curl -Ls "$img" -o "$file" 2>/dev/null
-      if command -v chafa >/dev/null; then
-        chafa --format symbols \
-              --size="${FZF_PREVIEW_COLUMNS}x${FZF_PREVIEW_LINES}" "$file"
-      else
-        printf "[ install chafa for poster preview ]\n\n%s\n" "$img"
-      fi
-    ' \
-    --preview-window 'right:35%' \
-    --bind 'resize:refresh-preview' \
-    --bind 'ctrl-j:down,ctrl-k:up'
+  local mode="$1"
+
+  if [[ "$mode" == "history" ]]; then
+    $ANIME_CLI history | fzf \
+      --expect=ctrl-s \
+      --delimiter=$'\t' \
+      --layout=reverse \
+      --border \
+      --prompt 'History > ' \
+      --header 'Enter to select · Ctrl-S Search' \
+      --with-nth=1 \
+      --preview "$FZF_PREVIEW" \
+      --preview-window 'right:35%' \
+      --bind 'resize:refresh-preview' \
+      --bind 'ctrl-j:down,ctrl-k:up'
+  else
+    $ANIME_CLI search "" | fzf \
+      --expect=ctrl-h \
+      --delimiter=$'\t' \
+      --layout=reverse \
+      --border \
+      --prompt 'Anime > ' \
+      --header 'Type to search · Ctrl-H History' \
+      --with-nth=1 \
+      --bind "start:reload($ANIME_CLI search {q} 2>/dev/null || true)" \
+      --bind "change:reload(sleep 0.3; $ANIME_CLI search {q} 2>/dev/null || true)" \
+      --preview "$FZF_PREVIEW" \
+      --preview-window 'right:35%' \
+      --bind 'resize:refresh-preview' \
+      --bind 'ctrl-j:down,ctrl-k:up'
+  fi
 }
 
 # ── stage 2 – pick an episode ─────────────────────────────────────────────────
@@ -145,7 +170,29 @@ run_tui() {
 
   while true; do
     local anime_line
-    anime_line=$(_pick_anime) || exit 0
+    local mode="search"
+
+    while true; do
+      local out key anime_line
+
+      mapfile -t out < <(_pick_anime "$mode") || exit 0
+
+      key="${out[0]}"
+      anime_line="${out[1]}"
+
+      case "$key" in
+      ctrl-h)
+        mode="history"
+        continue
+        ;;
+      ctrl-s)
+        mode="search"
+        continue
+        ;;
+      esac
+
+      [[ -n "$anime_line" ]] && break
+    done
     [ -n "$anime_line" ] || exit 0
 
     tput smcup 2>/dev/null
@@ -154,7 +201,7 @@ run_tui() {
     local anime_url anime_title
     anime_url=$(printf '%s' "$anime_line" | cut -f2)
     anime_title=$(printf '%s' "$anime_line" | cut -f1)
-
+    poster=$(printf '%s' "$anime_line" | cut -f3)
     while true; do
       local ep_line
       ep_line=$(_pick_episode "$anime_url" "$anime_title") || break
@@ -165,7 +212,7 @@ run_tui() {
 
       local ep_url stream
       ep_url=$(printf '%s' "$ep_line" | cut -f2)
-
+      ep_label=$(printf '%s' "$ep_line" | cut -f1)
       local tmpfile rc
       tmpfile=$(mktemp)
       $ANIME_CLI streams "$ep_url" >"$tmpfile" 2>/dev/null &
@@ -186,6 +233,11 @@ run_tui() {
         sleep 2
         continue
       }
+      $ANIME_CLI history-add \
+        "$anime_title" \
+        "$anime_url" \
+        "$poster" \
+        "$ep_label" >/dev/null 2>&1
       _play "$stream"
     done
   done
