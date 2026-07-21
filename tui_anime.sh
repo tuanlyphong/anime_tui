@@ -245,9 +245,7 @@ run_tui() {
     clear # <-- re-enter alt screen before any further output
 
     local anime_url anime_title poster
-    anime_url=$(printf '%s' "$anime_line" | cut -f2)
-    anime_title=$(printf '%s' "$anime_line" | cut -f1)
-    poster=$(printf '%s' "$anime_line" | cut -f3)
+    IFS=$'\t' read -r anime_title anime_url poster <<<"$anime_line"
 
     while true; do
       local ep_line
@@ -258,8 +256,7 @@ run_tui() {
       clear # <-- re-enter again, before "Fetching stream…"
 
       local ep_url ep_label stream
-      ep_url=$(printf '%s' "$ep_line" | cut -f2)
-      ep_label=$(printf '%s' "$ep_line" | cut -f1)
+      IFS=$'\t' read -r ep_label ep_url _ <<<"$ep_line"
       local tmpfile rc
       tmpfile=$(mktemp)
       $ANIME_CLI streams "$ep_url" >"$tmpfile" 2>/dev/null &
