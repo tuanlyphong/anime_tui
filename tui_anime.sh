@@ -29,6 +29,7 @@ PLAYER_OPTS="${PLAYER_OPTS:---really-quiet}" # extra flags for PLAYER
 # Set ABYSS_DL_JAR=/path/to/abyss-dl.jar to download before playing
 ABYSS_DL_JAR="${ABYSS_DL_JAR:-}"
 ABYSS_QUALITY="${ABYSS_QUALITY:-h}"
+ABYSS_PROGRESSIVE="${ABYSS_PROGRESSIVE:-1}"
 
 mkdir -p "$POSTER_CACHE"
 export SHELL="$(command -v bash)"
@@ -164,6 +165,21 @@ _play() {
     local id="${BASH_REMATCH[1]}"
 
     if [ -n "$ABYSS_DL_JAR" ] && command -v java >/dev/null; then
+      if [ "$ABYSS_PROGRESSIVE" != "0" ]; then
+        _warn "Progressive Abyss playback (id=$id, quality=$ABYSS_QUALITY)"
+        [ "$notify" -eq 1 ] && notify-send "Anime TUI" "Buffering episode…" -t 3000
+        (
+          if $ANIME_CLI abyss-stream "$ABYSS_DL_JAR" "$id" "$ABYSS_QUALITY" |
+            $PLAYER $PLAYER_OPTS - >/dev/null 2>&1; then
+            :
+          else
+            [ "$notify" -eq 1 ] && notify-send -u critical "Anime TUI" "Progressive playback failed"
+            _warn "Progressive Abyss playback failed"
+          fi
+        ) &
+        return
+      fi
+
       local outdir outfile logfile
       outdir=$(mktemp -d "${TMPDIR:-/tmp}/anime_XXXXXX")
       outfile="$outdir/episode.mp4"

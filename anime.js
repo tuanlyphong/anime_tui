@@ -82,6 +82,23 @@ switch (cmd) {
     }
     break;
 
+  case "abyss-stream":
+    {
+      const [jar, id, quality = "h"] = args;
+      if (!jar || !id) {
+        console.error("usage: abyss-stream <jar> <id> [h|m|l]");
+        process.exit(1);
+      }
+      const { streamAbyss } = await import("./lib/abyss-progressive.js");
+      try {
+        await streamAbyss({ jar, id, quality });
+      } catch (error) {
+        console.error(error.message);
+        process.exit(1);
+      }
+    }
+    break;
+
   default:
     console.error("unknown command");
     process.exit(1);
