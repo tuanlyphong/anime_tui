@@ -66,31 +66,46 @@ _check_deps() {
 _pick_anime() {
   local mode="$1"
   local query="${2:-}"
-  if [[ "$mode" == "history" ]]; then
-    $ANIME_CLI history | fzf \
+  if [[ "$mode" == "history" || "$mode" == "completed" ]]; then
+    local completed_flag=""
+    local header='Enter to select · Ctrl-S Search · Ctrl-E Toggle View · Alt-m Toggle'
+    if [[ "$mode" == "completed" ]]; then
+      completed_flag=" completed"
+    fi
+
+    # toggle command depends on whether we're viewing completed or not
+    local toggle_cmd
+    if [[ "$mode" == "completed" ]]; then
+      toggle_cmd="$ANIME_CLI history-uncomplete {2}"
+    else
+      toggle_cmd="$ANIME_CLI history-complete {2}"
+    fi
+
+    $ANIME_CLI history${completed_flag} | fzf \
       --print-query \
       --query "$query" \
-      --expect=ctrl-s \
+      --expect=ctrl-s,ctrl-e \
       --delimiter=$'\t' \
       --layout=reverse \
       --border \
       --prompt 'History > ' \
-      --header 'Enter to select · Ctrl-S Search' \
+      --header "$header" \
       --with-nth=1 \
       --preview "$FZF_PREVIEW" \
       --preview-window 'right:35%' \
       --bind 'resize:refresh-preview' \
-      --bind 'ctrl-j:down,ctrl-k:up'
+      --bind 'ctrl-j:down,ctrl-k:up' \
+      --bind "alt-m:execute-silent($toggle_cmd >/dev/null 2>&1)+reload($ANIME_CLI history${completed_flag} 2>/dev/null || true)"
   else
     $ANIME_CLI search "" | fzf \
       --print-query \
       --query "$query" \
-      --expect=ctrl-h \
+      --expect=ctrl-h,ctrl-e \
       --delimiter=$'\t' \
       --layout=reverse \
       --border \
       --prompt 'Anime > ' \
-      --header 'Type to search · Ctrl-H History' \
+      --header 'Type to search · Ctrl-H History · Ctrl-E Completed' \
       --with-nth=1 \
       --bind "start:reload($ANIME_CLI search {q} 2>/dev/null || true)" \
       --bind "change:reload(sleep 0.3; $ANIME_CLI search {q} 2>/dev/null || true)" \
@@ -140,14 +155,21 @@ _play() {
   local notify=0
   command -v notify-send >/dev/null && notify=1
 
-  if [[ "$stream_url" =~ ^https://abyssplayer\.com/(.+)$ ]]; then
+  # Clean the string of any hidden carriage returns or spaces passed from JS stdout
+  stream_url=$(echo "$stream_url" | tr -d '\r\n ')
+
+  # We use ([^/?#]+) instead of (.+) to strictly grab ONLY the ID.
+  # This stops capturing if it hits a slash, question mark, or end of string.
+  if [[ "$stream_url" =~ abyssplayer\.com/([^/?#]+) ]]; then
     local id="${BASH_REMATCH[1]}"
+
     if [ -n "$ABYSS_DL_JAR" ] && command -v java >/dev/null; then
       local outdir outfile logfile
       outdir=$(mktemp -d "${TMPDIR:-/tmp}/anime_XXXXXX")
       outfile="$outdir/episode.mp4"
       logfile="$outdir/abyss-dl.log"
-      _warn "Downloading via abyss-dl (id=$id) → $outfile (log: $logfile)"
+
+      _warn "Downloading via abyss-dl (id=$id) → $outfile"
       [ "$notify" -eq 1 ] && notify-send "Anime TUI" "Downloading episode…" -t 4000
 
       (
@@ -165,7 +187,7 @@ _play() {
     _warn "Tip: set ABYSS_DL_JAR=/path/to/abyss-dl.jar to download first"
   fi
 
-  _warn "Playing: $stream_url"
+  _warn "Playing direct stream: $stream_url"
   $PLAYER $PLAYER_OPTS "$stream_url" >/dev/null 2>&1 &
 }
 
@@ -207,6 +229,10 @@ run_tui() {
         ;;
       ctrl-s)
         mode="search"
+        continue
+        ;;
+      ctrl-e)
+        mode="completed"
         continue
         ;;
       esac
