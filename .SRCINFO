@@ -1,4 +1,4 @@
-pkgbase = anime-tui-git
+pkgbase = anime_tui
 	pkgdesc = Terminal anime browser and player
 	pkgver = 0
 	pkgrel = 1
@@ -12,9 +12,7 @@ pkgbase = anime-tui-git
 	depends = mpv
 	depends = java-runtime
 	depends = chromium
-	provides = anime-tui
-	conflicts = anime-tui
 	source = git+https://github.com/tuanlyphong/anime_tui.git
 	sha256sums = SKIP
 
-pkgname = anime-tui-git
+pkgname = anime_tui

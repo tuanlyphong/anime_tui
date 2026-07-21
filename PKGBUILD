@@ -1,5 +1,5 @@
 # Maintainer: tuanlyphong
-pkgname=anime-tui-git
+pkgname=anime_tui
 pkgver=0
 pkgrel=1
 pkgdesc='Terminal anime browser and player'
@@ -8,8 +8,6 @@ url='https://github.com/tuanlyphong/anime_tui'
 license=('custom:project')
 depends=('nodejs' 'fzf' 'mpv' 'java-runtime' 'chromium')
 makedepends=('git' 'npm')
-provides=('anime-tui')
-conflicts=('anime-tui')
 source=("git+${url}.git")
 sha256sums=('SKIP')
 
@@ -32,7 +30,7 @@ package() {
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 
   install -dm755 "$pkgdir/usr/bin"
-  cat > "$pkgdir/usr/bin/anime-tui" <<'EOF'
+  cat >"$pkgdir/usr/bin/anime-tui" <<'EOF'
 #!/bin/sh
 export ABYSS_DL_JAR="${ABYSS_DL_JAR:-/usr/share/anime-tui/abyss-dl.jar}"
 exec /usr/share/anime-tui/tui_anime.sh "$@"
