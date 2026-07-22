@@ -168,15 +168,18 @@ _play() {
       if [ "$ABYSS_PROGRESSIVE" != "0" ]; then
         _warn "Progressive Abyss playback (id=$id, quality=$ABYSS_QUALITY)"
         [ "$notify" -eq 1 ] && notify-send "Anime TUI" "Buffering episode…" -t 3000
-        (
-          if $ANIME_CLI abyss-stream "$ABYSS_DL_JAR" "$id" "$ABYSS_QUALITY" |
-            $PLAYER $PLAYER_OPTS - >/dev/null 2>&1; then
-            :
-          else
-            [ "$notify" -eq 1 ] && notify-send -u critical "Anime TUI" "Progressive playback failed"
-            _warn "Progressive Abyss playback failed"
-          fi
-        ) &
+        # Exit alternate screen so player can use the main terminal, run in
+        # foreground so we can restore the TUI afterward.
+        tput rmcup 2>/dev/null || true
+        if $ANIME_CLI abyss-stream "$ABYSS_DL_JAR" "$id" "$ABYSS_QUALITY" | $PLAYER $PLAYER_OPTS - >/dev/null 2>&1; then
+          :
+        else
+          [ "$notify" -eq 1 ] && notify-send -u critical "Anime TUI" "Progressive playback failed"
+          _warn "Progressive Abyss playback failed"
+        fi
+        # Re-enter alternate screen and redraw TUI
+        tput smcup 2>/dev/null || true
+        clear
         return
       fi
 
@@ -188,23 +191,28 @@ _play() {
       _warn "Downloading via abyss-dl (id=$id) → $outfile"
       [ "$notify" -eq 1 ] && notify-send "Anime TUI" "Downloading episode…" -t 4000
 
-      (
-        if java -jar "$ABYSS_DL_JAR" "$id" "$ABYSS_QUALITY" -o "$outfile" >"$logfile" 2>&1; then
-          [ "$notify" -eq 1 ] && notify-send "Anime TUI" "Download done — starting playback" -t 3000
-          $PLAYER $PLAYER_OPTS "$outfile" >/dev/null 2>&1
-          rm -rf "$outdir"
-        else
-          [ "$notify" -eq 1 ] && notify-send -u critical "Anime TUI" "Download failed — see $logfile"
-          _warn "Download failed, see $logfile (kept at $outdir)"
-        fi
-      ) &
+      if java -jar "$ABYSS_DL_JAR" "$id" "$ABYSS_QUALITY" -o "$outfile" >"$logfile" 2>&1; then
+        [ "$notify" -eq 1 ] && notify-send "Anime TUI" "Download done — starting playback" -t 3000
+        tput rmcup 2>/dev/null || true
+        $PLAYER $PLAYER_OPTS "$outfile" >/dev/null 2>&1
+        rm -rf "$outdir"
+        tput smcup 2>/dev/null || true
+        clear
+      else
+        [ "$notify" -eq 1 ] && notify-send -u critical "Anime TUI" "Download failed — see $logfile"
+        _warn "Download failed, see $logfile (kept at $outdir)"
+      fi
       return
     fi
     _warn "Tip: set ABYSS_DL_JAR=/path/to/abyss-dl.jar to download first"
   fi
 
   _warn "Playing direct stream: $stream_url"
-  $PLAYER $PLAYER_OPTS "$stream_url" >/dev/null 2>&1 &
+  # Exit alternate screen for the player, run in foreground, then restore TUI.
+  tput rmcup 2>/dev/null || true
+  $PLAYER $PLAYER_OPTS "$stream_url" >/dev/null 2>&1
+  tput smcup 2>/dev/null || true
+  clear
 }
 
 # ── main loop ─────────────────────────────────────────────────────────────────
