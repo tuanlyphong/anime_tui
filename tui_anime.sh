@@ -53,6 +53,19 @@ _die() {
 }
 _warn() { printf '%s\n' "$*" >&2; }
 
+_restore_terminal() {
+  trap - EXIT INT TERM HUP
+  tput rmcup 2>/dev/null || true
+  tput cnorm 2>/dev/null || true
+  stty sane 2>/dev/null || true
+  clear 2>/dev/null || true
+}
+
+trap '_restore_terminal' EXIT
+trap '_restore_terminal; exit 130' INT
+trap '_restore_terminal; exit 143' TERM
+trap '_restore_terminal; exit 129' HUP
+
 _check_deps() {
   local missing=()
   command -v fzf >/dev/null || missing+=(fzf)
