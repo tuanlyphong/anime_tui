@@ -18,6 +18,9 @@ import { fileURLToPath } from "node:url";
 const fixture = fileURLToPath(
   new URL("./fixtures/fake-java.js", import.meta.url),
 );
+const outputFailureFixture = fileURLToPath(
+  new URL("./fixtures/output-failure.js", import.meta.url),
+);
 const cli = fileURLToPath(new URL("../anime.js", import.meta.url));
 
 async function setupFakeJava(t) {
@@ -90,6 +93,24 @@ async function runPlayerClose({ directory, marker }) {
   );
   await stderrFile.close();
   return { ...result, stderr: await readFile(stderrPath, "utf8") };
+}
+
+async function runOutputFailure({ directory, marker }) {
+  const resultPath = path.join(directory, "output-failure-result.json");
+  const child = spawn(process.execPath, [outputFailureFixture], {
+    env: {
+      ...process.env,
+      PATH: `${directory}${path.delimiter}${process.env.PATH ?? ""}`,
+      FAKE_JAVA_MARKER: marker,
+      FAKE_JAVA_MODE: "wait",
+      OUTPUT_FAILURE_RESULT: resultPath,
+    },
+    stdio: "ignore",
+  });
+  const close = await new Promise((resolve) =>
+    child.once("close", (code, signal) => resolve({ code, signal })),
+  );
+  return { ...close, result: JSON.parse(await readFile(resultPath, "utf8")) };
 }
 
 async function pathExists(target) {
@@ -179,4 +200,16 @@ test("V9 sink restores listener count and closes at most once", async () => {
   sink.dispose();
   assert.equal(output.listenerCount("error"), baseline);
   assert.equal(closes, 1);
+});
+
+test("V7 V8 segment output failure propagates and cleans workdir", async (t) => {
+  const setup = await setupFakeJava(t);
+  const result = await runOutputFailure(setup);
+  const workDir = await readFile(setup.marker, "utf8");
+  const signals = await readFile(`${setup.marker}.signals`, "utf8");
+
+  assert.equal(result.code, 0);
+  assert.deepEqual(result.result, { code: "EIO", message: "output failed" });
+  assert.equal(signals, "SIGTERM\n");
+  assert.equal(await pathExists(workDir), false);
 });
