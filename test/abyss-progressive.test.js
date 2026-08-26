@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 import {
   access,
   chmod,
@@ -129,7 +130,7 @@ test("V2 EPIPE terminates downloader and cleans workdir", async (t) => {
   const signals = await readFile(`${setup.marker}.signals`, "utf8");
 
   assert.equal(result.code, 0, result.stderr);
-  assert.match(signals, /SIGTERM\n/);
+  assert.equal(signals, "SIGTERM\n");
   assert.equal(await pathExists(workDir), false);
 });
 
@@ -143,4 +144,39 @@ test("V4 nonzero downloader retains log path", async (t) => {
   assert.match(result.stderr, /abyss-dl exited with status 7; log kept at /);
   assert.equal(await pathExists(logPath), true);
   await rm(workDir, { recursive: true, force: true });
+});
+
+test("V3 non-EPIPE output failure rejects original error", async () => {
+  const { createPlayerSink } = await import("../lib/abyss-progressive.js");
+  assert.equal(typeof createPlayerSink, "function");
+
+  const failure = Object.assign(new Error("output failed"), { code: "EIO" });
+  const output = new EventEmitter();
+  output.write = (_buffer, callback) => queueMicrotask(() => callback(failure));
+  let closes = 0;
+  const sink = createPlayerSink(output, () => closes += 1);
+
+  await assert.rejects(sink.write(Buffer.from("video")), (error) => error === failure);
+  assert.equal(closes, 1);
+  sink.dispose();
+});
+
+test("V9 sink restores listener count and closes at most once", async () => {
+  const { createPlayerSink } = await import("../lib/abyss-progressive.js");
+  assert.equal(typeof createPlayerSink, "function");
+
+  const output = new EventEmitter();
+  output.write = (_buffer, callback) => {
+    const failure = Object.assign(new Error("player closed"), { code: "EPIPE" });
+    output.emit("error", failure);
+    queueMicrotask(() => callback(failure));
+  };
+  const baseline = output.listenerCount("error");
+  let closes = 0;
+  const sink = createPlayerSink(output, () => closes += 1);
+
+  await assert.rejects(sink.write(Buffer.from("video")), /PLAYER_CLOSED/);
+  sink.dispose();
+  assert.equal(output.listenerCount("error"), baseline);
+  assert.equal(closes, 1);
 });
