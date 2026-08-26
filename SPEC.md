@@ -1,18 +1,28 @@
 # SPEC
 
 ## §G GOAL
-Deepen Abyss progressive playback: hide player-output lifecycle behind one sink; preserve bytes, exits, cleanup.
+Resume incomplete progressive downloads without duplicate bytes; advance latest watched only after successful player exit.
 
 ## §C CONSTRAINTS
 - Node.js ESM; existing dependencies only.
-- Refactor + output-error fix; ⊥ byte, CLI, downloader-failure behavior change.
+- Refactor + recovery fixes; ⊥ byte | CLI behavior change.
 - Existing characterization tests green before refactor; new regression tests fail before fix & green after.
-- One module pass: `lib/abyss-progressive.js` player-output boundary.
+- Progressive recovery scope: `lib/abyss-progressive.js`; watched-header scope: `tui_anime.sh` + tests.
+- Automatic recovery ≤3 retries; same work directory/output path; existing dependencies only.
+- Latest watched advances after normal player exit, including intentional close; ⊥ advance on launch/playback failure.
 
 ## §I INTERFACES
 - cmd: `node anime.js abyss-stream <jar> <id> [h|m|l]` → MP4 bytes on stdout; diagnostics on stderr.
 - module: `streamAbyss({ jar, id, quality = "h" })` → resolve on complete | player close; reject on downloader/output failure.
 - internal: `createPlayerSink(output, onClose)` → `{ write(buffer), closed, dispose() }`.
+- history: `run_tui` → `_play(stream)` status 0 → `history-add <anime> <url> <poster> <episode>` → next `_pick_episode` header `<canonicalTitle> [<latestEpisode>]`.
+
+## §R RESEARCH
+id|topic|finding|src
+R1|resume|same `-o` parent → same `temp_<slug>_<resolution>`; complete segments reused, partial segments deleted|https://github.com/abdlhay/AbyssVideoDownloader/blob/master/src/main/kotlin/com/abmo/services/VideoDownloader.kt
+R2|retry|automatic retry absent; README TODO unchecked|https://github.com/abdlhay/AbyssVideoDownloader/blob/master/README.md
+R3|exit code|download exception caught + logged without nonzero exit → process exits 0|https://github.com/abdlhay/AbyssVideoDownloader/blob/master/src/main/kotlin/com/abmo/Application.kt
+R4|merge safety|merge uses `output.appendBytes`; stale partial output before retry → duplicate bytes|https://github.com/abdlhay/AbyssVideoDownloader/blob/master/src/main/kotlin/com/abmo/services/VideoDownloader.kt
 
 ## §V INVARIANTS
 V1: emitted bytes ! contiguous, ordered, byte-identical to completed MP4.
@@ -24,6 +34,17 @@ V6: success | player close → work directory removed; downloader failure → lo
 V7: segment polling ignores only transient `ENOENT`; sink/output errors ! propagate.
 V8: non-`EPIPE` output failure → downloader termination, work directory removal, rejection with original error.
 V9: ∀ exit path → stdout error-listener count restored; child termination requested ≤1 time.
+V10: downloader exit 0 → completed output exists & size ≥ emitted bytes; else incomplete attempt.
+V11: incomplete attempt → delete stale output only, preserve segment directory, retry identical `-o` path.
+V12: retry resumes from next unsent segment; ⊥ emitted byte duplication | reordering.
+V13: incomplete recovery ≤3 retries with bounded backoff; player close cancels recovery.
+V14: retries exhausted → reject `ABYSS_INCOMPLETE`, retain work directory + log path.
+V15: normal | intentional player exit → `latestEpisode` becomes max(current, selected) after `_play` returns.
+V16: stream resolution | player launch | playback failure → ⊥ `latestEpisode` advance.
+V17: successful player exit → reloaded episode-picker header shows `<canonicalTitle> [<latestEpisode>]`.
+V18: progressive history advance → downloader status 0 & player status 0.
+V19: episode-picker header → canonical title + exactly one `[latestEpisode]` suffix.
+V20: each downloader attempt owns one child; termination requested ≤1 per child; sink listener survives attempt replacement.
 
 ## §T TASKS
 id|status|task|cites
@@ -32,6 +53,14 @@ T2|x|add green byte-order, player-close, downloader-failure characterization tes
 T3|x|add failing output-error, listener, termination regression tests|V3,V7,V8,V9
 T4|x|extract `createPlayerSink`; narrow segment race catch; normalize output failures|V2,V3,V5,V7,V8,V9,I.internal
 T5|x|run focused + full suite; confirm public surfaces unchanged|V1,V2,V3,V4,V5,V6,V7,V8,V9,I.cmd,I.module
+T6|x|add false-success + incomplete-output regression fixture|V10,V14,R3
+T7|.|add resume, no-duplicate, retry-limit, player-close tests|V1,V2,V11,V12,V13,V20,R1,R4
+T8|.|implement bounded same-workdir downloader retry lifecycle|V10,V11,V12,V13,V14,V20,I.module
+T9|.|run full suite + live early-close smoke test|V1,V2,V3,V4,V5,V6,V7,V8,V9,V10,V11,V12,V13,V14,I.cmd,I.module
+T10|.|add player-exit, pipeline-status, highest-progress, header regression tests|V15,V16,V17,V18,V19,I.history
+T11|.|return `_play` status; move `history-add`; refresh canonical header suffix|V15,V16,V17,V18,V19,I.history
+T12|.|run shell syntax + full suite; smoke intentional close|V15,V16,V17,V18,V19,I.history
 
 ## §B BUGS
 id|date|cause|fix
+B1|2026-08-26|truncated segment logged error but downloader exited 0; wrapper opened absent output|V10,V11,V12,V13,V14

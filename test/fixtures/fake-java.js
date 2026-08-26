@@ -19,6 +19,15 @@ const segment = Buffer.alloc(segmentSize, 0x61);
 const tail = Buffer.from("tail");
 
 if (marker) await fs.writeFile(marker, workDir);
+if (marker) {
+  let attempts = 0;
+  try {
+    attempts = Number(await fs.readFile(`${marker}.attempts`, "utf8"));
+  } catch {
+    // First attempt.
+  }
+  await fs.writeFile(`${marker}.attempts`, String(attempts + 1));
+}
 
 const recordSignal = async () => {
   if (marker) await fs.appendFile(`${marker}.signals`, "SIGTERM\n");
@@ -35,7 +44,9 @@ const segmentDir = path.join(workDir, "temp_fixture");
 await fs.mkdir(segmentDir, { recursive: true });
 await fs.writeFile(path.join(segmentDir, "segment_0"), segment);
 
-if (mode === "wait") {
+if (mode === "incomplete") {
+  console.error("fake incomplete download");
+} else if (mode === "wait") {
   setInterval(() => {}, 1000);
 } else {
   await new Promise((resolve) => setTimeout(resolve, 100));

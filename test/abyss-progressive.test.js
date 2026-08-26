@@ -213,3 +213,17 @@ test("V7 V8 segment output failure propagates and cleans workdir", async (t) => 
   assert.equal(signals, "SIGTERM\n");
   assert.equal(await pathExists(workDir), false);
 });
+
+test("V10 V14 zero-exit missing output is classified incomplete", async (t) => {
+  const setup = await setupFakeJava(t);
+  const result = await runCli({ ...setup, mode: "incomplete" });
+  const workDir = await readFile(setup.marker, "utf8");
+  const attempts = Number(await readFile(`${setup.marker}.attempts`, "utf8"));
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /ABYSS_INCOMPLETE: .*log kept at /);
+  assert.equal(attempts, 4);
+  assert.equal(await pathExists(path.join(workDir, "abyss-dl.log")), true);
+  assert.equal(await pathExists(workDir), true);
+  await rm(workDir, { recursive: true, force: true });
+});
