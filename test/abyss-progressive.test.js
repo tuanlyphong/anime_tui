@@ -13,6 +13,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 const fixture = fileURLToPath(
@@ -113,6 +114,31 @@ async function runOutputFailure({ directory, marker }) {
   return { ...close, result: JSON.parse(await readFile(resultPath, "utf8")) };
 }
 
+async function runForcedSignal({ directory, marker }, signal) {
+  const child = spawn(
+    process.execPath,
+    [cli, "abyss-stream", "fixture.jar", "episode-id", "h"],
+    {
+      env: {
+        ...process.env,
+        PATH: `${directory}${path.delimiter}${process.env.PATH ?? ""}`,
+        FAKE_JAVA_MARKER: marker,
+        FAKE_JAVA_MODE: "wait",
+      },
+      stdio: "ignore",
+    },
+  );
+  while (!await pathExists(marker)) await delay(10);
+  const workDir = await readFile(marker, "utf8");
+  child.kill(signal);
+  const result = await new Promise((resolve) =>
+    child.once("close", (code, closeSignal) =>
+      resolve({ code, signal: closeSignal }),
+    ),
+  );
+  return { ...result, workDir };
+}
+
 async function pathExists(target) {
   try {
     await access(target);
@@ -153,6 +179,21 @@ test("V2 EPIPE terminates downloader and cleans workdir", async (t) => {
   assert.equal(result.code, 0, result.stderr);
   assert.equal(signals, "SIGTERM\n");
   assert.equal(await pathExists(workDir), false);
+});
+
+test("V22 forced termination cleans workdir", async (t) => {
+  for (const [signal, exitCode] of [["SIGINT", 130], ["SIGTERM", 143], ["SIGHUP", 129]]) {
+    await t.test(signal, async (t) => {
+      const setup = await setupFakeJava(t);
+      const result = await runForcedSignal(setup, signal);
+      t.after(() => rm(result.workDir, { recursive: true, force: true }));
+
+      assert.equal(result.code, exitCode);
+      assert.equal(result.signal, null);
+      assert.equal(await pathExists(result.workDir), false);
+      assert.equal(await readFile(`${setup.marker}.signals`, "utf8"), "SIGTERM\n");
+    });
+  }
 });
 
 test("V4 nonzero downloader retains log path", async (t) => {

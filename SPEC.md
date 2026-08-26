@@ -47,6 +47,7 @@ V18: progressive history advance → downloader status 0 & player status 0.
 V19: episode-picker header → canonical title + exactly one `[latestEpisode]` suffix.
 V20: each downloader attempt owns one child; termination requested ≤1 per child; sink listener survives attempt replacement.
 V21: progressive stdin playback → player cache enabled; audio + video tracks demuxable.
+V22: `SIGINT` | `SIGTERM` | `SIGHUP` → active downloader terminated, work directory removed, exit status `128 + signal`.
 
 ## §T TASKS
 id|status|task|cites
@@ -63,9 +64,11 @@ T10|x|add player-exit, pipeline-status, highest-progress, header regression test
 T11|x|return `_play` status; move `history-add`; refresh canonical header suffix|V15,V16,V17,V18,V19,I.history
 T12|x|run shell syntax + full suite; smoke intentional close|V15,V16,V17,V18,V19,I.history
 T13|x|add progressive player-args regression; enable stdin cache|V21,I.history
+T14|x|add forced-signal cleanup lifecycle + regression|V22,I.cmd,I.module
 
 ## §B BUGS
 id|date|cause|fix
 B1|2026-08-26|truncated segment logged error but downloader exited 0; wrapper opened absent output|V10,V11,V12,V13,V14
 B2|2026-08-26|`cheerio@1.2.0` locked vulnerable `undici@7.28.0`|§C dependency audit
 B3|2026-08-26|progressive MP4 stdin lacked forced player cache → audio track unavailable|V21
+B4|2026-08-26|forced shell signal bypassed async work-directory cleanup|V22
