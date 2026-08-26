@@ -324,6 +324,8 @@ run_tui() {
   done
 }
 
-run_tui
+if [ "${ANIME_TUI_TESTING:-0}" != "1" ]; then
+  run_tui
+fi
 #TODO: optimize speed
 #TODO: refractor project
