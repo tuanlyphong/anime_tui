@@ -4,12 +4,15 @@ import { EventEmitter } from "node:events";
 import {
   access,
   chmod,
+  mkdir,
   mkdtemp,
   open,
   readFile,
   rm,
   symlink,
+  writeFile,
 } from "node:fs/promises";
+import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -168,6 +171,49 @@ test("V1 emits contiguous byte-identical MP4", async (t) => {
   assert.equal(result.stdout.length, 2 * 1024 * 1024 + 4);
   assert.equal(result.stdout.subarray(0, -4).every((byte) => byte === 0x61), true);
   assert.equal(result.stdout.subarray(-4).toString(), "tail");
+});
+
+test("V23 V24 cached segment reader avoids rescans and preserves index", async (t) => {
+  const { createSegmentReader } = await import("../lib/abyss-progressive.js");
+  assert.equal(typeof createSegmentReader, "function");
+
+  const workDir = await mkdtemp(path.join(os.tmpdir(), "anime-reader-"));
+  t.after(() => rm(workDir, { recursive: true, force: true }));
+  const originalReaddir = fs.readdir.bind(fs);
+  let parentScans = 0;
+  t.mock.method(fs, "readdir", async (...args) => {
+    if (args[0] === workDir) parentScans += 1;
+    return originalReaddir(...args);
+  });
+
+  const reader = createSegmentReader(workDir);
+  assert.equal(await reader.readNext(), null);
+  assert.equal(parentScans, 1);
+
+  const segmentDir = path.join(workDir, "temp_fixture");
+  const segment0 = path.join(segmentDir, "segment_0");
+  await mkdir(segmentDir);
+  await writeFile(segment0, Buffer.from("short"));
+  assert.equal(await reader.readNext(), null);
+  assert.equal(parentScans, 2);
+
+  const full = Buffer.alloc(2 * 1024 * 1024, 0x61);
+  await writeFile(segment0, full);
+  assert.deepEqual(await reader.readNext(), full);
+  assert.equal(await reader.readNext(), null);
+  assert.equal(parentScans, 2);
+
+  const segment1 = path.join(segmentDir, "segment_1");
+  await writeFile(segment1, full);
+  assert.deepEqual(await reader.readNext(), full);
+  assert.equal(parentScans, 2);
+
+  const notDirectory = path.join(workDir, "not-directory");
+  await writeFile(notDirectory, "file");
+  await assert.rejects(
+    createSegmentReader(notDirectory).readNext(),
+    { code: "ENOTDIR" },
+  );
 });
 
 test("V2 EPIPE terminates downloader and cleans workdir", async (t) => {

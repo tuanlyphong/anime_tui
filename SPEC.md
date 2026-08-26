@@ -16,6 +16,7 @@ Resume incomplete progressive downloads without duplicate bytes; advance latest 
 - cmd: `node anime.js abyss-stream <jar> <id> [h|m|l]` → MP4 bytes on stdout; diagnostics on stderr.
 - module: `streamAbyss({ jar, id, quality = "h" })` → resolve on complete | player close; reject on downloader/output failure.
 - internal: `createPlayerSink(output, onClose)` → `{ write(buffer), closed, dispose() }`.
+- internal: `createSegmentReader(workDir)` → `{ readNext(): Buffer | null }`; owns temp-dir discovery, contiguous index, completeness + transient-race policy.
 - history: `run_tui` → `_play(stream)` status 0 → `history-add <anime> <url> <poster> <episode>` → next `_pick_episode` header `<canonicalTitle> [<latestEpisode>]`.
 
 ## §R RESEARCH
@@ -46,8 +47,10 @@ V17: successful player exit → reloaded episode-picker header shows `<canonical
 V18: progressive history advance → downloader status 0 & player status 0.
 V19: episode-picker header → canonical title + exactly one `[latestEpisode]` suffix.
 V20: each downloader attempt owns one child; termination requested ≤1 per child; sink listener survives attempt replacement.
-V21: progressive stdin playback → player cache enabled; audio + video tracks demuxable.
+V21: progressive stdin playback → player launched with cache enabled.
 V22: `SIGINT` | `SIGTERM` | `SIGHUP` → active downloader terminated, work directory removed, exit status `128 + signal`.
+V23: first successful `temp_*` discovery → cache path; subsequent polls perform 0 parent-directory scans; retries preserve cached path + next unsent index.
+V24: segment reader advances only after exact `SEGMENT_SIZE` read; `ENOENT` | short read → null without index advance; other fs errors propagate.
 
 ## §T TASKS
 id|status|task|cites
@@ -65,6 +68,7 @@ T11|x|return `_play` status; move `history-add`; refresh canonical header suffix
 T12|x|run shell syntax + full suite; smoke intentional close|V15,V16,V17,V18,V19,I.history
 T13|x|add progressive player-args regression; enable stdin cache|V21,I.history
 T14|x|add forced-signal cleanup lifecycle + regression|V22,I.cmd,I.module
+T15|x|extract cached segment reader; add scan-count + byte/retry regression tests|V1,V7,V11,V12,V23,V24,I.internal
 
 ## §B BUGS
 id|date|cause|fix
