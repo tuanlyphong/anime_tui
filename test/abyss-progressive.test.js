@@ -64,7 +64,7 @@ async function runCli({ directory, marker, mode = "success" }) {
   };
 }
 
-async function runPlayerClose({ directory, marker }) {
+async function runPlayerClose({ directory, marker }, mode = "wait") {
   const stderrPath = path.join(directory, "stderr-player-close");
   const stderrFile = await open(stderrPath, "w");
   const child = spawn(
@@ -83,7 +83,7 @@ async function runPlayerClose({ directory, marker }) {
         ...process.env,
         PATH: `${directory}${path.delimiter}${process.env.PATH ?? ""}`,
         FAKE_JAVA_MARKER: marker,
-        FAKE_JAVA_MODE: "wait",
+        FAKE_JAVA_MODE: mode,
       },
       stdio: ["ignore", "ignore", stderrFile.fd],
     },
@@ -226,4 +226,39 @@ test("V10 V14 zero-exit missing output is classified incomplete", async (t) => {
   assert.equal(await pathExists(path.join(workDir, "abyss-dl.log")), true);
   assert.equal(await pathExists(workDir), true);
   await rm(workDir, { recursive: true, force: true });
+});
+
+test("V11 V12 V20 retry resumes without duplicate bytes", async (t) => {
+  const setup = await setupFakeJava(t);
+  const result = await runCli({ ...setup, mode: "resume" });
+  const attempts = Number(await readFile(`${setup.marker}.attempts`, "utf8"));
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(attempts, 2);
+  assert.equal(result.stdout.length, 4 * 1024 * 1024 + 4);
+  assert.equal(result.stdout.subarray(0, 2 * 1024 * 1024).every((x) => x === 0x61), true);
+  assert.equal(result.stdout.subarray(2 * 1024 * 1024, -4).every((x) => x === 0x62), true);
+  assert.equal(result.stdout.subarray(-4).toString(), "tail");
+});
+
+test("V13 incomplete download retries at most three times", async (t) => {
+  const setup = await setupFakeJava(t);
+  const result = await runCli({ ...setup, mode: "incomplete" });
+  const attempts = Number(await readFile(`${setup.marker}.attempts`, "utf8"));
+  const workDir = await readFile(setup.marker, "utf8");
+
+  assert.equal(result.code, 1);
+  assert.equal(attempts, 4);
+  await rm(workDir, { recursive: true, force: true });
+});
+
+test("V13 player close cancels pending retry", async (t) => {
+  const setup = await setupFakeJava(t);
+  const result = await runPlayerClose(setup, "incomplete");
+  const attempts = Number(await readFile(`${setup.marker}.attempts`, "utf8"));
+  const workDir = await readFile(setup.marker, "utf8");
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(attempts, 1);
+  assert.equal(await pathExists(workDir), false);
 });

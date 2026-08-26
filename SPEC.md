@@ -54,7 +54,7 @@ T3|x|add failing output-error, listener, termination regression tests|V3,V7,V8,V
 T4|x|extract `createPlayerSink`; narrow segment race catch; normalize output failures|V2,V3,V5,V7,V8,V9,I.internal
 T5|x|run focused + full suite; confirm public surfaces unchanged|V1,V2,V3,V4,V5,V6,V7,V8,V9,I.cmd,I.module
 T6|x|add false-success + incomplete-output regression fixture|V10,V14,R3
-T7|.|add resume, no-duplicate, retry-limit, player-close tests|V1,V2,V11,V12,V13,V20,R1,R4
+T7|x|add resume, no-duplicate, retry-limit, player-close tests|V1,V2,V11,V12,V13,V20,R1,R4
 T8|.|implement bounded same-workdir downloader retry lifecycle|V10,V11,V12,V13,V14,V20,I.module
 T9|.|run full suite + live early-close smoke test|V1,V2,V3,V4,V5,V6,V7,V8,V9,V10,V11,V12,V13,V14,I.cmd,I.module
 T10|.|add player-exit, pipeline-status, highest-progress, header regression tests|V15,V16,V17,V18,V19,I.history

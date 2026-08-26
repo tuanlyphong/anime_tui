@@ -19,6 +19,7 @@ const segment = Buffer.alloc(segmentSize, 0x61);
 const tail = Buffer.from("tail");
 
 if (marker) await fs.writeFile(marker, workDir);
+let attempt = 1;
 if (marker) {
   let attempts = 0;
   try {
@@ -26,7 +27,8 @@ if (marker) {
   } catch {
     // First attempt.
   }
-  await fs.writeFile(`${marker}.attempts`, String(attempts + 1));
+  attempt = attempts + 1;
+  await fs.writeFile(`${marker}.attempts`, String(attempt));
 }
 
 const recordSignal = async () => {
@@ -42,9 +44,19 @@ if (mode === "nonzero") {
 
 const segmentDir = path.join(workDir, "temp_fixture");
 await fs.mkdir(segmentDir, { recursive: true });
-await fs.writeFile(path.join(segmentDir, "segment_0"), segment);
+const firstSegment = path.join(segmentDir, "segment_0");
+try {
+  await fs.access(firstSegment);
+} catch {
+  await fs.writeFile(firstSegment, segment);
+}
 
-if (mode === "incomplete") {
+if (mode === "resume" && attempt > 1) {
+  const secondSegment = Buffer.alloc(segmentSize, 0x62);
+  await fs.writeFile(path.join(segmentDir, "segment_1"), secondSegment);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  await fs.writeFile(output, Buffer.concat([segment, secondSegment, tail]));
+} else if (mode === "incomplete" || mode === "resume") {
   console.error("fake incomplete download");
 } else if (mode === "wait") {
   setInterval(() => {}, 1000);
