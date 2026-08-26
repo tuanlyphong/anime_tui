@@ -72,3 +72,4 @@ B1|2026-08-26|truncated segment logged error but downloader exited 0; wrapper op
 B2|2026-08-26|`cheerio@1.2.0` locked vulnerable `undici@7.28.0`|§C dependency audit
 B3|2026-08-26|progressive MP4 stdin lacked forced player cache → audio track unavailable|V21
 B4|2026-08-26|forced shell signal bypassed async work-directory cleanup|V22
+B5|2026-08-26|fake downloader ready marker preceded signal-handler install → V22 test race|V22

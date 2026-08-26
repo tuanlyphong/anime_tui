@@ -18,7 +18,6 @@ const segmentSize = 2 * 1024 * 1024;
 const segment = Buffer.alloc(segmentSize, 0x61);
 const tail = Buffer.from("tail");
 
-if (marker) await fs.writeFile(marker, workDir);
 let attempt = 1;
 if (marker) {
   let attempts = 0;
@@ -36,6 +35,7 @@ const recordSignal = async () => {
   process.exit(0);
 };
 process.on("SIGTERM", recordSignal);
+if (marker) await fs.writeFile(marker, workDir);
 
 if (mode === "nonzero") {
   console.error("fake downloader failure");
