@@ -56,7 +56,7 @@ T5|x|run focused + full suite; confirm public surfaces unchanged|V1,V2,V3,V4,V5,
 T6|x|add false-success + incomplete-output regression fixture|V10,V14,R3
 T7|x|add resume, no-duplicate, retry-limit, player-close tests|V1,V2,V11,V12,V13,V20,R1,R4
 T8|x|implement bounded same-workdir downloader retry lifecycle|V10,V11,V12,V13,V14,V20,I.module
-T9|.|run full suite + live early-close smoke test|V1,V2,V3,V4,V5,V6,V7,V8,V9,V10,V11,V12,V13,V14,I.cmd,I.module
+T9|x|run full suite + live early-close smoke test|V1,V2,V3,V4,V5,V6,V7,V8,V9,V10,V11,V12,V13,V14,I.cmd,I.module
 T10|.|add player-exit, pipeline-status, highest-progress, header regression tests|V15,V16,V17,V18,V19,I.history
 T11|.|return `_play` status; move `history-add`; refresh canonical header suffix|V15,V16,V17,V18,V19,I.history
 T12|.|run shell syntax + full suite; smoke intentional close|V15,V16,V17,V18,V19,I.history
