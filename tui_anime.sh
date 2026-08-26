@@ -184,16 +184,18 @@ _play() {
         # Exit alternate screen so player can use the main terminal, run in
         # foreground so we can restore the TUI afterward.
         tput rmcup 2>/dev/null || true
-        if $ANIME_CLI abyss-stream "$ABYSS_DL_JAR" "$id" "$ABYSS_QUALITY" | $PLAYER $PLAYER_OPTS - >/dev/null 2>&1; then
-          :
-        else
+        $ANIME_CLI abyss-stream "$ABYSS_DL_JAR" "$id" "$ABYSS_QUALITY" | $PLAYER $PLAYER_OPTS - >/dev/null 2>&1
+        local pipeline_status=("${PIPESTATUS[@]}")
+        local play_rc=0
+        if [ "${pipeline_status[0]}" -ne 0 ] || [ "${pipeline_status[1]}" -ne 0 ]; then
           [ "$notify" -eq 1 ] && notify-send -u critical "Anime TUI" "Progressive playback failed"
           _warn "Progressive Abyss playback failed"
+          play_rc=1
         fi
         # Re-enter alternate screen and redraw TUI
         tput smcup 2>/dev/null || true
         clear
-        return
+        return "$play_rc"
       fi
 
       local outdir outfile logfile
@@ -208,14 +210,16 @@ _play() {
         [ "$notify" -eq 1 ] && notify-send "Anime TUI" "Download done — starting playback" -t 3000
         tput rmcup 2>/dev/null || true
         $PLAYER $PLAYER_OPTS "$outfile" >/dev/null 2>&1
+        local play_rc=$?
         rm -rf "$outdir"
         tput smcup 2>/dev/null || true
         clear
+        return "$play_rc"
       else
         [ "$notify" -eq 1 ] && notify-send -u critical "Anime TUI" "Download failed — see $logfile"
         _warn "Download failed, see $logfile (kept at $outdir)"
       fi
-      return
+      return 1
     fi
     _warn "Tip: set ABYSS_DL_JAR=/path/to/abyss-dl.jar to download first"
   fi
@@ -224,8 +228,65 @@ _play() {
   # Exit alternate screen for the player, run in foreground, then restore TUI.
   tput rmcup 2>/dev/null || true
   $PLAYER $PLAYER_OPTS "$stream_url" >/dev/null 2>&1
+  local play_rc=$?
   tput smcup 2>/dev/null || true
   clear
+  return "$play_rc"
+}
+
+_canonical_title() {
+  local title="$1"
+  local suffix_re='^(.*)[[:space:]]+\[((Tập|Episode|Ep)[^]]*)\][[:space:]]*$'
+  while [[ "$title" =~ $suffix_re ]]; do
+    title="${BASH_REMATCH[1]}"
+  done
+  printf '%s' "$title"
+}
+
+_latest_history_episode() {
+  local anime_url="$1"
+  local fallback="$2"
+  local label candidate _ latest=""
+  local suffix_re='\[((Tập|Episode|Ep)[^]]*)\][[:space:]]*$'
+
+  while IFS=$'\t' read -r label candidate _; do
+    if [ "$candidate" = "$anime_url" ] && [[ "$label" =~ $suffix_re ]]; then
+      latest="${BASH_REMATCH[1]}"
+    fi
+  done < <(
+    $ANIME_CLI history 2>/dev/null
+    $ANIME_CLI history completed 2>/dev/null
+  )
+  printf '%s' "${latest:-$fallback}"
+}
+
+_episode_header_title() {
+  local title latest
+  title=$(_canonical_title "$1")
+  latest="$2"
+  if [ -n "$latest" ]; then
+    printf '%s [%s]' "$title" "$latest"
+  else
+    printf '%s' "$title"
+  fi
+}
+
+_play_and_record() {
+  local stream="$1" anime_title="$2" anime_url="$3" poster="$4" ep_label="$5"
+  local rc latest
+
+  _play "$stream"
+  rc=$?
+  [ "$rc" -eq 0 ] || return "$rc"
+
+  $ANIME_CLI history-add \
+    "$anime_title" \
+    "$anime_url" \
+    "$poster" \
+    "$ep_label" >/dev/null 2>&1 || return 1
+
+  latest=$(_latest_history_episode "$anime_url" "$ep_label")
+  _episode_header_title "$anime_title" "$latest"
 }
 
 # ── main loop ─────────────────────────────────────────────────────────────────
@@ -281,12 +342,13 @@ run_tui() {
     tput smcup 2>/dev/null
     clear # <-- re-enter alt screen before any further output
 
-    local anime_url anime_title poster
+    local anime_url anime_title poster episode_title
     IFS=$'\t' read -r anime_title anime_url poster <<<"$anime_line"
+    episode_title="$anime_title"
 
     while true; do
       local ep_line
-      ep_line=$(_pick_episode "$anime_url" "$anime_title") || break
+      ep_line=$(_pick_episode "$anime_url" "$episode_title") || break
       [ -n "$ep_line" ] || break
 
       tput smcup 2>/dev/null
@@ -314,12 +376,15 @@ run_tui() {
         sleep 2
         continue
       }
-      $ANIME_CLI history-add \
+      local refreshed_title
+      if refreshed_title=$(_play_and_record \
+        "$stream" \
         "$anime_title" \
         "$anime_url" \
         "$poster" \
-        "$ep_label" >/dev/null 2>&1
-      _play "$stream"
+        "$ep_label"); then
+        episode_title="$refreshed_title"
+      fi
     done
   done
 }

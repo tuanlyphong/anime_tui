@@ -58,7 +58,7 @@ T7|x|add resume, no-duplicate, retry-limit, player-close tests|V1,V2,V11,V12,V13
 T8|x|implement bounded same-workdir downloader retry lifecycle|V10,V11,V12,V13,V14,V20,I.module
 T9|x|run full suite + live early-close smoke test|V1,V2,V3,V4,V5,V6,V7,V8,V9,V10,V11,V12,V13,V14,I.cmd,I.module
 T10|x|add player-exit, pipeline-status, highest-progress, header regression tests|V15,V16,V17,V18,V19,I.history
-T11|.|return `_play` status; move `history-add`; refresh canonical header suffix|V15,V16,V17,V18,V19,I.history
+T11|x|return `_play` status; move `history-add`; refresh canonical header suffix|V15,V16,V17,V18,V19,I.history
 T12|.|run shell syntax + full suite; smoke intentional close|V15,V16,V17,V18,V19,I.history
 
 ## §B BUGS
