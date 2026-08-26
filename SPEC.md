@@ -10,6 +10,7 @@ Resume incomplete progressive downloads without duplicate bytes; advance latest 
 - Progressive recovery scope: `lib/abyss-progressive.js`; watched-header scope: `tui_anime.sh` + tests.
 - Automatic recovery ≤3 retries; same work directory/output path; existing dependencies only.
 - Latest watched advances after normal player exit, including intentional close; ⊥ advance on launch/playback failure.
+- Production dependencies → 0 high/critical `npm audit` findings.
 
 ## §I INTERFACES
 - cmd: `node anime.js abyss-stream <jar> <id> [h|m|l]` → MP4 bytes on stdout; diagnostics on stderr.
@@ -64,3 +65,4 @@ T12|x|run shell syntax + full suite; smoke intentional close|V15,V16,V17,V18,V19
 ## §B BUGS
 id|date|cause|fix
 B1|2026-08-26|truncated segment logged error but downloader exited 0; wrapper opened absent output|V10,V11,V12,V13,V14
+B2|2026-08-26|`cheerio@1.2.0` locked vulnerable `undici@7.28.0`|§C dependency audit
