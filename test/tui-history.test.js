@@ -105,3 +105,28 @@ test("V18 progressive history requires both pipeline statuses", async (t) => {
 
   assert.equal(result.code, 1, result.stderr);
 });
+
+test("V21 progressive stdin playback enables mpv cache", async (t) => {
+  const directory = await setup(t);
+  const argsLog = path.join(directory, "player-args");
+  const fakeCli = path.join(directory, "fake-cli");
+  const fakePlayer = path.join(directory, "fake-player");
+  await writeFile(fakeCli, "#!/bin/bash\nprintf video\n");
+  await writeFile(fakePlayer, `#!/bin/bash
+printf '%s\\n' "$@" >${JSON.stringify(argsLog)}
+cat >/dev/null
+`);
+  await Promise.all([chmod(fakeCli, 0o755), chmod(fakePlayer, 0o755)]);
+  const script = `
+    export ANIME_TUI_TESTING=1 HOME=${JSON.stringify(directory)}
+    export ANIME_CLI=${JSON.stringify(fakeCli)} PLAYER=${JSON.stringify(fakePlayer)}
+    export ABYSS_DL_JAR=fake.jar ABYSS_PROGRESSIVE=1
+    source ${JSON.stringify(tui)}
+    tput() { :; }; clear() { :; }; _warn() { :; }; notify-send() { :; }
+    _play https://abyssplayer.com/id
+  `;
+  const result = await run("/bin/bash", ["-c", script]);
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(await readFile(argsLog, "utf8"), /^--cache=yes$/m);
+});

@@ -26,6 +26,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANIME_CLI="${ANIME_CLI:-node ${SCRIPT_DIR}/anime.js}"
 PLAYER="${PLAYER:-mpv}"                      # any player command
 PLAYER_OPTS="${PLAYER_OPTS:---really-quiet}" # extra flags for PLAYER
+PROGRESSIVE_PLAYER_OPTS="${PROGRESSIVE_PLAYER_OPTS:---cache=yes}" # stdin needs seekable cache for all tracks
 # Set ABYSS_DL_JAR=/path/to/abyss-dl.jar to download before playing
 ABYSS_DL_JAR="${ABYSS_DL_JAR:-}"
 ABYSS_QUALITY="${ABYSS_QUALITY:-h}"
@@ -184,7 +185,7 @@ _play() {
         # Exit alternate screen so player can use the main terminal, run in
         # foreground so we can restore the TUI afterward.
         tput rmcup 2>/dev/null || true
-        $ANIME_CLI abyss-stream "$ABYSS_DL_JAR" "$id" "$ABYSS_QUALITY" | $PLAYER $PLAYER_OPTS - >/dev/null 2>&1
+        $ANIME_CLI abyss-stream "$ABYSS_DL_JAR" "$id" "$ABYSS_QUALITY" | $PLAYER $PLAYER_OPTS $PROGRESSIVE_PLAYER_OPTS - >/dev/null 2>&1
         local pipeline_status=("${PIPESTATUS[@]}")
         local play_rc=0
         if [ "${pipeline_status[0]}" -ne 0 ] || [ "${pipeline_status[1]}" -ne 0 ]; then

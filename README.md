@@ -61,6 +61,7 @@ Configuration can be supplied through environment variables or a `.env` file bes
 | --- | --- | --- |
 | `PLAYER` | `mpv` | Player command |
 | `PLAYER_OPTS` | `--really-quiet` | Additional player arguments |
+| `PROGRESSIVE_PLAYER_OPTS` | `--cache=yes` | Additional arguments for progressive stdin playback |
 | `ABYSS_DL_JAR` | packaged JAR | Override the downloader path |
 | `ABYSS_QUALITY` | `h` | Abyss quality: `h`, `m`, or `l` |
 | `ABYSS_PROGRESSIVE` | `1` | Set to `0` to wait for a complete file |
