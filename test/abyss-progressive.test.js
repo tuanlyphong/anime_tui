@@ -1,5 +1,14 @@
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, readFile, symlink } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import {
+  access,
+  chmod,
+  mkdtemp,
+  open,
+  readFile,
+  rm,
+  symlink,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -8,18 +17,130 @@ import { fileURLToPath } from "node:url";
 const fixture = fileURLToPath(
   new URL("./fixtures/fake-java.js", import.meta.url),
 );
+const cli = fileURLToPath(new URL("../anime.js", import.meta.url));
 
-test("T1 fake Java fixture implements downloader command shape", async () => {
+async function setupFakeJava(t) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "anime-fixture-"));
   const java = path.join(directory, "java");
-  const output = path.join(directory, "episode.mp4");
+  const marker = path.join(directory, "workdir");
   await chmod(fixture, 0o755);
   await symlink(fixture, java);
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  return { directory, marker };
+}
 
-  const { spawn } = await import("node:child_process");
+async function runCli({ directory, marker, mode = "success" }) {
+  const stdoutPath = path.join(directory, `stdout-${mode}`);
+  const stderrPath = path.join(directory, `stderr-${mode}`);
+  const stdoutFile = await open(stdoutPath, "w");
+  const stderrFile = await open(stderrPath, "w");
+  const child = spawn(
+    process.execPath,
+    [cli, "abyss-stream", "fixture.jar", "episode-id", "h"],
+    {
+      env: {
+        ...process.env,
+        PATH: `${directory}${path.delimiter}${process.env.PATH ?? ""}`,
+        FAKE_JAVA_MARKER: marker,
+        FAKE_JAVA_MODE: mode,
+      },
+      stdio: ["ignore", stdoutFile.fd, stderrFile.fd],
+    },
+  );
+  const result = await new Promise((resolve) =>
+    child.once("close", (code, signal) =>
+      resolve({ code, signal }),
+    ),
+  );
+  await Promise.all([stdoutFile.close(), stderrFile.close()]);
+  return {
+    ...result,
+    stdout: await readFile(stdoutPath),
+    stderr: await readFile(stderrPath, "utf8"),
+  };
+}
+
+async function runPlayerClose({ directory, marker }) {
+  const stderrPath = path.join(directory, "stderr-player-close");
+  const stderrFile = await open(stderrPath, "w");
+  const child = spawn(
+    "/bin/bash",
+    [
+      "-o",
+      "pipefail",
+      "-c",
+      '"$1" "$2" abyss-stream fixture.jar episode-id h | head -c 1 >/dev/null',
+      "bash",
+      process.execPath,
+      cli,
+    ],
+    {
+      env: {
+        ...process.env,
+        PATH: `${directory}${path.delimiter}${process.env.PATH ?? ""}`,
+        FAKE_JAVA_MARKER: marker,
+        FAKE_JAVA_MODE: "wait",
+      },
+      stdio: ["ignore", "ignore", stderrFile.fd],
+    },
+  );
+  const result = await new Promise((resolve) =>
+    child.once("close", (code, signal) => resolve({ code, signal })),
+  );
+  await stderrFile.close();
+  return { ...result, stderr: await readFile(stderrPath, "utf8") };
+}
+
+async function pathExists(target) {
+  try {
+    await access(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+test("T1 fake Java fixture implements downloader command shape", async (t) => {
+  const { directory } = await setupFakeJava(t);
+  const java = path.join(directory, "java");
+  const output = path.join(directory, "episode.mp4");
+
   const child = spawn(java, ["-jar", "fixture.jar", "episode-id", "h", "-o", output]);
   const code = await new Promise((resolve) => child.once("close", resolve));
 
   assert.equal(code, 0);
   assert.equal((await readFile(output)).length, 2 * 1024 * 1024 + 4);
+});
+
+test("V1 emits contiguous byte-identical MP4", async (t) => {
+  const setup = await setupFakeJava(t);
+  const result = await runCli(setup);
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.stdout.length, 2 * 1024 * 1024 + 4);
+  assert.equal(result.stdout.subarray(0, -4).every((byte) => byte === 0x61), true);
+  assert.equal(result.stdout.subarray(-4).toString(), "tail");
+});
+
+test("V2 EPIPE terminates downloader and cleans workdir", async (t) => {
+  const setup = await setupFakeJava(t);
+  const result = await runPlayerClose(setup);
+  const workDir = await readFile(setup.marker, "utf8");
+  const signals = await readFile(`${setup.marker}.signals`, "utf8");
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(signals, /SIGTERM\n/);
+  assert.equal(await pathExists(workDir), false);
+});
+
+test("V4 nonzero downloader retains log path", async (t) => {
+  const setup = await setupFakeJava(t);
+  const result = await runCli({ ...setup, mode: "nonzero" });
+  const workDir = await readFile(setup.marker, "utf8");
+  const logPath = path.join(workDir, "abyss-dl.log");
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /abyss-dl exited with status 7; log kept at /);
+  assert.equal(await pathExists(logPath), true);
+  await rm(workDir, { recursive: true, force: true });
 });

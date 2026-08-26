@@ -28,7 +28,7 @@ V9: ∀ exit path → stdout error-listener count restored; child termination re
 ## §T TASKS
 id|status|task|cites
 T1|x|configure `node --test`; add fake-Java subprocess fixture|I.cmd,I.module
-T2|.|add green byte-order, player-close, downloader-failure characterization tests|V1,V2,V4,V6
+T2|x|add green byte-order, player-close, downloader-failure characterization tests|V1,V2,V4,V6
 T3|.|add failing output-error, listener, termination regression tests|V3,V7,V8,V9
 T4|.|extract `createPlayerSink`; narrow segment race catch; normalize output failures|V2,V3,V5,V7,V8,V9,I.internal
 T5|.|run focused + full suite; confirm public surfaces unchanged|V1,V2,V3,V4,V5,V6,V7,V8,V9,I.cmd,I.module
