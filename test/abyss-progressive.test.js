@@ -37,14 +37,14 @@ async function setupFakeJava(t) {
   return { directory, marker };
 }
 
-async function runCli({ directory, marker, mode = "success" }) {
+async function runCli({ directory, marker, mode = "success", quality = "h" }) {
   const stdoutPath = path.join(directory, `stdout-${mode}`);
   const stderrPath = path.join(directory, `stderr-${mode}`);
   const stdoutFile = await open(stdoutPath, "w");
   const stderrFile = await open(stderrPath, "w");
   const child = spawn(
     process.execPath,
-    [cli, "abyss-stream", "fixture.jar", "episode-id", "h"],
+    [cli, "abyss-stream", "fixture.jar", "episode-id", quality],
     {
       env: {
         ...process.env,
@@ -328,7 +328,7 @@ test("V11 V12 V20 retry resumes without duplicate bytes", async (t) => {
   assert.equal(result.stdout.subarray(-4).toString(), "tail");
 });
 
-test("V13 incomplete download retries at most three times", async (t) => {
+test("V13 V26 emitted bytes prevent quality fallback", async (t) => {
   const setup = await setupFakeJava(t);
   const result = await runCli({ ...setup, mode: "incomplete" });
   const attempts = Number(await readFile(`${setup.marker}.attempts`, "utf8"));
@@ -336,6 +336,8 @@ test("V13 incomplete download retries at most three times", async (t) => {
 
   assert.equal(result.code, 1);
   assert.equal(attempts, 4);
+  assert.ok(result.stdout.length > 0);
+  assert.equal(await readFile(`${setup.marker}.qualities`, "utf8"), "h\nh\nh\nh\n");
   await rm(workDir, { recursive: true, force: true });
 });
 
@@ -349,3 +351,28 @@ test("V13 player close cancels pending retry", async (t) => {
   assert.equal(attempts, 1);
   assert.equal(await pathExists(workDir), false);
 });
+
+for (const [quality, mode, expected, success] of [
+  ["h", "fallback-medium", "hhhhm", true],
+  ["h", "fallback-empty", "hhhhm", true],
+  ["h", "fallback-low", "hhhhmmmml", true],
+  ["m", "fallback-low", "mmmml", true],
+  ["l", "fallback-none", "llll", false],
+  ["h", "fallback-none", "hhhhmmmmllll", false],
+]) {
+  test(`V25 V26 fallback ${quality} ${mode}`, async (t) => {
+    const setup = await setupFakeJava(t);
+    const result = await runCli({ ...setup, mode, quality });
+    assert.equal(result.code, success ? 0 : 1, result.stderr);
+    assert.equal((await readFile(`${setup.marker}.qualities`, "utf8")).replaceAll("\n", ""), expected);
+    if (success) {
+      assert.deepEqual(result.stdout, Buffer.concat([Buffer.alloc(2 * 1024 * 1024, 0x61), Buffer.from("tail")]));
+      assert.match(result.stderr, /falling back/);
+    } else {
+      assert.equal(result.stdout.length, 0);
+      assert.match(result.stderr, /ABYSS_INCOMPLETE/);
+    }
+    const workDir = await readFile(setup.marker, "utf8");
+    await rm(workDir, { recursive: true, force: true });
+  });
+}

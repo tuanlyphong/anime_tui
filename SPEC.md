@@ -5,10 +5,10 @@ Resume incomplete progressive downloads without duplicate bytes; advance latest 
 
 ## §C CONSTRAINTS
 - Node.js ESM; existing dependencies only.
-- Refactor + recovery fixes; ⊥ byte | CLI behavior change.
+- Recovery fixes + pre-playback quality fallback; CLI shape unchanged.
 - Existing characterization tests green before refactor; new regression tests fail before fix & green after.
 - Progressive recovery scope: `lib/abyss-progressive.js`; watched-header scope: `tui_anime.sh` + tests.
-- Automatic recovery ≤3 retries; same work directory/output path; existing dependencies only.
+- Automatic recovery ≤3 retries per quality; same work directory/output path; existing dependencies only.
 - Latest watched advances after normal player exit, including intentional close; ⊥ advance on launch/playback failure.
 - Production dependencies → 0 high/critical `npm audit` findings.
 
@@ -36,11 +36,11 @@ V6: success | player close → work directory removed; downloader failure → lo
 V7: segment polling ignores only transient `ENOENT`; sink/output errors ! propagate.
 V8: non-`EPIPE` output failure → downloader termination, work directory removal, rejection with original error.
 V9: ∀ exit path → stdout error-listener count restored; child termination requested ≤1 time.
-V10: downloader exit 0 → completed output exists & size ≥ emitted bytes; else incomplete attempt.
+V10: downloader exit 0 → completed output exists & size > 0 & size ≥ emitted bytes; else incomplete attempt.
 V11: incomplete attempt → delete stale output only, preserve segment directory, retry identical `-o` path.
 V12: retry resumes from next unsent segment; ⊥ emitted byte duplication | reordering.
-V13: incomplete recovery ≤3 retries with bounded backoff; player close cancels recovery.
-V14: retries exhausted → reject `ABYSS_INCOMPLETE`, retain work directory + log path.
+V13: incomplete recovery ≤3 retries per quality with bounded backoff; player close cancels recovery.
+V14: retries exhausted & no safe lower quality → reject `ABYSS_INCOMPLETE`, retain work directory + log path.
 V15: normal | intentional player exit → `latestEpisode` becomes max(current, selected) after `_play` returns.
 V16: stream resolution | player launch | playback failure → ⊥ `latestEpisode` advance.
 V17: successful player exit → reloaded episode-picker header shows `<canonicalTitle> [<latestEpisode>]`.
@@ -51,6 +51,8 @@ V21: progressive stdin playback → player launched with cache enabled.
 V22: `SIGINT` | `SIGTERM` | `SIGHUP` → active downloader terminated, work directory removed, exit status `128 + signal`.
 V23: first successful `temp_*` discovery → cache path; subsequent polls perform 0 parent-directory scans; retries preserve cached path + next unsent index.
 V24: segment reader advances only after exact `SEGMENT_SIZE` read; `ENOENT` | short read → null without index advance; other fs errors propagate.
+V25: incomplete quality exhausts retries before stdout bytes → fallback h→m→l from requested quality; ⊥ upgrade; ≤4 attempts per quality; stderr reports switch.
+V26: quality switch → discard old output + segment directories, reset segment reader; emitted bytes >0 → same-quality recovery only.
 
 ## §T TASKS
 id|status|task|cites
@@ -69,6 +71,7 @@ T12|x|run shell syntax + full suite; smoke intentional close|V15,V16,V17,V18,V19
 T13|x|add progressive player-args regression; enable stdin cache|V21,I.history
 T14|x|add forced-signal cleanup lifecycle + regression|V22,I.cmd,I.module
 T15|x|extract cached segment reader; add scan-count + byte/retry regression tests|V1,V7,V11,V12,V23,V24,I.internal
+T16|x|add bounded pre-playback quality fallback + regression tests + docs|V1,V10,V13,V14,V25,V26
 
 ## §B BUGS
 id|date|cause|fix
@@ -77,3 +80,4 @@ B2|2026-08-26|`cheerio@1.2.0` locked vulnerable `undici@7.28.0`|§C dependency a
 B3|2026-08-26|progressive MP4 stdin lacked forced player cache → audio track unavailable|V21
 B4|2026-08-26|forced shell signal bypassed async work-directory cleanup|V22
 B5|2026-08-26|fake downloader ready marker preceded signal-handler install → V22 test race|V22
+B6|2026-09-05|episode 6 high-quality Abyss source resolves null.sssrr.org; retries never try working medium quality|V25,V26

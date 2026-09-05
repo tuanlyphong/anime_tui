@@ -47,7 +47,9 @@ To disable progressive playback and restore full-download-first behavior:
 ABYSS_PROGRESSIVE=0 anime-tui
 ```
 
-The default quality is high (`h`). Override it with `h`, `m`, or `l`:
+The default quality is high (`h`). Progressive playback retries an incomplete download up to three times, then tries medium (`m`) and low (`l`) if no bytes have reached the player. Each quality starts with fresh segments. Once playback starts, retries stay at the same quality to avoid mixing video data. Downloader launch failures and nonzero exits remain errors. Full-download mode (`ABYSS_PROGRESSIVE=0`) uses only the selected quality.
+
+Override the starting quality with `h`, `m`, or `l`:
 
 ```bash
 ABYSS_QUALITY=m anime-tui

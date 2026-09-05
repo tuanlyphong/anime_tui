@@ -42,6 +42,25 @@ if (mode === "nonzero") {
   process.exit(7);
 }
 
+const quality = process.argv[5];
+if (marker) await fs.appendFile(`${marker}.qualities`, `${quality}\n`);
+if (mode.startsWith("fallback")) {
+  const works = mode === "fallback-medium" || mode === "fallback-empty" ? "m" : mode === "fallback-low" ? "l" : null;
+  if (quality !== works) {
+    await fs.mkdir(path.join(workDir, "temp_stale"), { recursive: true });
+    await fs.writeFile(path.join(workDir, "temp_stale", "segment_0"), "partial");
+    if (mode === "fallback-empty") await fs.writeFile(output, "");
+    process.exit(0);
+  }
+  try {
+    await fs.access(path.join(workDir, "temp_stale"));
+    console.error("stale quality segments survived fallback");
+    process.exit(7);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+}
+
 const segmentDir = path.join(workDir, "temp_fixture");
 await fs.mkdir(segmentDir, { recursive: true });
 const firstSegment = path.join(segmentDir, "segment_0");
