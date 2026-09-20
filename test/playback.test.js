@@ -15,6 +15,12 @@ async function setup(t) {
  t.after(async()=>{process.env.HOME=old; if(oldTmp===undefined) delete process.env.TMPDIR; else process.env.TMPDIR=oldTmp; await rm(home,{recursive:true,force:true});});
 }
 const play = mode => playEpisode({streamUrl:'https://example.test/video.mp4',animeUrl,episodeUrl,label:'Episode',player,playerArgs:[`--fixture=${mode}`]});
+test('unexpected player SIGKILL after IPC attaches is failed playback',async t=>{
+ await setup(t);
+ const result=await play('self-kill');
+ assert.equal(result.outcome,'failed');
+ assert.match(result.error.message,/SIGKILL/);
+});
 test('natural EOF commits watched before returning',async t=>{
  await setup(t); assert.equal((await play('eof')).outcome,'finished');
  assert.deepEqual(Object.keys(await getProgress(animeUrl,episodeUrl)).sort(),['completedAt','state']);

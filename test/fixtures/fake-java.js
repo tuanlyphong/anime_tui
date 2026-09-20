@@ -2,6 +2,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { spawn } from "node:child_process";
 
 const outputFlag = process.argv.indexOf("-o");
 const output = outputFlag >= 0 ? process.argv[outputFlag + 1] : null;
@@ -82,4 +83,15 @@ if (mode === "resume" && attempt > 1) {
 } else {
   await new Promise((resolve) => setTimeout(resolve, 100));
   await fs.writeFile(output, Buffer.concat([segment, tail]));
+}
+
+if (mode === 'leader-exit') {
+  const descendant = spawn(process.execPath, ['-e', "process.on('SIGTERM',()=>{});process.send('ready');setInterval(()=>{},1000)"], {
+    stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
+  });
+  await new Promise(resolve => descendant.once('message', resolve));
+  await fs.writeFile(`${marker}.descendant`, String(descendant.pid));
+  descendant.disconnect();
+  descendant.unref();
+  process.exit(0);
 }

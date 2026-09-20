@@ -35,6 +35,7 @@ else {
      if(mode==='prepare-cancel') setTimeout(()=>process.exit(0),100);
     }
     if(c[0]==='set_property' && c[1]==='pause' && c[2]===false) {
+     if(mode==='self-kill') { setTimeout(()=>process.kill(process.pid,'SIGKILL'),50); continue; }
      if(mode==='unpause-fail') continue;
      if (mode==='drain-eof') {
       process.stdin.resume();

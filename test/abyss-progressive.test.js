@@ -29,6 +29,24 @@ const outputFailureFixture = fileURLToPath(
 );
 const cli = fileURLToPath(new URL("../anime.js", import.meta.url));
 
+test('leader exit cleans descendants retaining downloader pipes and preserves complete output', async t => {
+  const fixture = await setupFakeJava(t);
+  let timer;
+  try {
+    const result = await Promise.race([
+      runCli({ ...fixture, mode: 'leader-exit' }),
+      new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Error('leader exited but inherited pipes prevented cleanup')), 5000); }),
+    ]);
+    assert.equal(result.code, 0);
+    assert.deepEqual(result.stdout, Buffer.concat([Buffer.alloc(2 * 1024 * 1024, 0x61), Buffer.from('tail')]));
+    await assert.rejects(access(await readFile(fixture.marker, 'utf8')), {code:'ENOENT'});
+  } finally {
+    clearTimeout(timer);
+    try { process.kill(Number(await readFile(`${fixture.marker}.descendant`, 'utf8')), 'SIGKILL'); }
+    catch (error) { if (!['ENOENT', 'ESRCH'].includes(error.code)) throw error; }
+  }
+});
+
 test('cooperative player-close cleanup leaves no grace-period timer keeping CLI alive', async t => {
   const fixture = await setupFakeJava(t);
   const start = Date.now();
