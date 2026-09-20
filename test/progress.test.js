@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, open, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
 async function setup(t) {
-  const home = await mkdtemp("/tmp/opencode/anime-progress-");
+  const home = await mkdtemp(path.join(os.tmpdir(), "anime-progress-"));
   const previous = process.env.HOME;
   process.env.HOME = home;
   t.after(async () => {
