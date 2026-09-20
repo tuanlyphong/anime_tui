@@ -78,6 +78,13 @@ test('progressive resume accepts actual target-containing range below requested 
  await saveProgress(animeUrl,episodeUrl,{positionSeconds:900,durationSeconds:1000});
  assert.equal((await playEpisode({...options,playerArgs:['--fixture=drain-eof']})).outcome,'finished');
 });
+test('resume position slightly past duration seeks inside media and finishes naturally',async t=>{
+  await setup(t); const options=await abyss(t);
+  await saveProgress(animeUrl,episodeUrl,{positionSeconds:1000.023,durationSeconds:1000});
+  const result=await playEpisode({...options,playerArgs:['--fixture=end-resume']});
+  assert.equal(result.outcome,'finished',result.error?.message);
+  assert.equal((await getProgress(animeUrl,episodeUrl)).state,'watched');
+});
 test('cancelled source cannot establish natural completion',async t=>{
  await setup(t); const options=await abyss(t,'wait');
  assert.equal((await playEpisode({...options,playerArgs:['--fixture=eof']})).outcome,'failed');

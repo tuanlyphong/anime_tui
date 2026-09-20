@@ -24,20 +24,24 @@ else {
     buffer = buffer.slice(newline+1);
     let error = 'success';
     if(c[0] === 'observe_property') observed.add(c[2]);
-    if(c[0] === 'seek') { if(mode==='seek-fail') error='seeking failed'; else position=c[1]; }
+     if(c[0] === 'seek') { if(mode==='seek-fail' || (mode==='end-resume' && c[1]>999)) error='seeking failed'; else position=c[1]; }
     if(c[0] === 'set_property' && mode==='unpause-fail') error='unpause failed';
     send({request_id,error,data:c[0]==='get_property' ? position : undefined});
     if(c[0] === 'loadfile') {
      if(observed.size < 3) process.exit(22);
      prop('duration', 1000); prop('time-pos',0);
      send({event:'file-loaded'});
-     prop('demuxer-cache-state', {'seekable-ranges':[{start:0,end:904.94}]});
+      prop('demuxer-cache-state', {'seekable-ranges':[{start:0,end:904.94}]});
+      if(mode==='end-resume') {
+       prop('demuxer-cache-state', {'seekable-ranges':[{start:0,end:1000}]});
+       setTimeout(()=>process.exit(0),1500);
+      }
      if(mode==='prepare-cancel') setTimeout(()=>process.exit(0),100);
     }
     if(c[0]==='set_property' && c[1]==='pause' && c[2]===false) {
      if(mode==='self-kill') { setTimeout(()=>process.kill(process.pid,'SIGKILL'),50); continue; }
      if(mode==='unpause-fail') continue;
-     if (mode==='drain-eof') {
+      if (mode==='drain-eof' || mode==='end-resume') {
       process.stdin.resume();
       process.stdin.on('end',()=>{ prop('time-pos',1000); send({event:'end-file',reason:'eof'}); });
       continue;
