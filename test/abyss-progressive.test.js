@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { Writable } from "node:stream";
+import { streamAbyss } from "../lib/abyss-progressive.js";
 import {
   access,
   chmod,
@@ -26,6 +28,26 @@ const outputFailureFixture = fileURLToPath(
   new URL("./fixtures/output-failure.js", import.meta.url),
 );
 const cli = fileURLToPath(new URL("../anime.js", import.meta.url));
+
+test('cooperative player-close cleanup leaves no grace-period timer keeping CLI alive', async t => {
+  const fixture = await setupFakeJava(t);
+  const start = Date.now();
+  await runPlayerClose(fixture);
+  assert.ok(Date.now() - start < 1800, 'cooperative termination should not wait for an unused grace timer');
+});
+
+test('supplied media sink reports full delivery and cancellation explicitly', async t => {
+  const { directory, marker } = await setupFakeJava(t);
+  const previous = { ...process.env };
+  Object.assign(process.env, { PATH: `${directory}:${process.env.PATH}`, FAKE_JAVA_MARKER: marker, FAKE_JAVA_MODE: 'success' });
+  t.after(() => { for (const key of Object.keys(process.env)) if (!(key in previous)) delete process.env[key]; Object.assign(process.env, previous); });
+  let bytes = 0;
+  const output = new Writable({ write(chunk, encoding, callback) { bytes += chunk.length; callback(); } });
+  assert.deepEqual(await streamAbyss({jar:'fixture.jar',id:'episode-id',output}), {completed:true});
+  assert.ok(bytes > 0);
+  const closed = new Writable({ write(chunk, encoding, callback) { callback(Object.assign(new Error('closed'),{code:'EPIPE'})); } });
+  assert.deepEqual(await streamAbyss({jar:'fixture.jar',id:'episode-id',output:closed}), {completed:false});
+});
 
 async function setupFakeJava(t) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "anime-fixture-"));
