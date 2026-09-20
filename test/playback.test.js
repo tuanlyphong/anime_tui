@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, chmod, symlink, readdir } from 'node:fs/promises';
+import { mkdtemp, rm, chmod, symlink, readdir, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -91,6 +91,16 @@ test('source failure preserves preparing resume',async t=>{
 test('download-first full file shares tracked EOF lifecycle',async t=>{
  await setup(t); const options=await abyss(t);
  assert.equal((await playEpisode({...options,progressive:false})).outcome,'finished');
+});
+test('download-first incomplete high quality fails after one attempt without trying medium or low',async t=>{
+ await setup(t); const options=await abyss(t,'fallback-medium');
+ const marker=path.join(process.env.HOME,'attempt');
+ const old=process.env.FAKE_JAVA_MARKER; process.env.FAKE_JAVA_MARKER=marker;
+ t.after(()=>{if(old===undefined) delete process.env.FAKE_JAVA_MARKER; else process.env.FAKE_JAVA_MARKER=old;});
+ const result=await playEpisode({...options,progressive:false});
+ assert.equal(result.outcome,'failed');
+ assert.equal(await readFile(`${marker}.qualities`,'utf8'),'h\n');
+ assert.equal(await getProgress(animeUrl,episodeUrl),null);
 });
 test('termination escalates after two seconds for a stubborn player and descendant holding pipes',async t=>{
  await setup(t); const start=Date.now();

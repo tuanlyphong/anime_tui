@@ -35,6 +35,13 @@ async function setup(t) {
   return directory;
 }
 
+test("CLI failures print a concise actionable error without a stack trace", async () => {
+  const result = await run(process.execPath, [cli, "streams", "invalid"]);
+  assert.equal(result.code, 1);
+  assert.equal(result.stdout, "");
+  assert.equal(result.stderr, "episodeId not found\n");
+});
+
 test("V15 successful exit retains highest watched progress", async (t) => {
   const home = await setup(t);
   const env = { HOME: home };
@@ -80,10 +87,45 @@ esac
     _play() { return 0; }
     _play_and_record stream 'Title [Tập 03]' /anime poster 'Tập 07'
   `;
-  const result = await run("/bin/bash", ["-c", script]);
+  const result = await run("/bin/bash", ["-c", script], { env: { TERM: "xterm-256color" } });
 
   assert.equal(result.code, 0, result.stderr);
   assert.equal(result.stdout, "Title [Tập 07]");
+});
+
+test("episode loading preserves actionable CLI errors", async (t) => {
+  const directory = await setup(t);
+  const fakeCli = path.join(directory, "fake-cli");
+  await writeFile(fakeCli, '#!/bin/bash\nprintf "HTTP 403: access denied\\n" >&2\nexit 1\n');
+  await chmod(fakeCli, 0o755);
+  const result = await run("/bin/bash", ["-c", `
+    export ANIME_TUI_TESTING=1 HOME=${JSON.stringify(directory)} ANIME_CLI=${JSON.stringify(fakeCli)}
+    source ${JSON.stringify(tui)}
+    sleep() { :; }
+    _pick_episode /anime Title
+  `]);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /HTTP 403: access denied/);
+});
+
+test("stream lookup displays the CLI error after the spinner", async (t) => {
+  const directory = await setup(t);
+  const fakeCli = path.join(directory, "fake-cli");
+  await writeFile(fakeCli, '#!/bin/bash\nprintf "Request timed out: check connection\\n" >&2\nexit 1\n');
+  await chmod(fakeCli, 0o755);
+  const result = await run("/bin/bash", ["-c", `
+    export ANIME_TUI_TESTING=1 HOME=${JSON.stringify(directory)} ANIME_CLI=${JSON.stringify(fakeCli)}
+    source ${JSON.stringify(tui)}
+    _check_deps() { :; }
+    _spinner() { :; }
+    _pick_anime() { printf 'kimi\\n\\nTitle\\t/anime\\tposter\\n'; }
+    _pick_episode() { printf 'Tập 05\\t/episode\\n'; }
+    sleep() { exit 0; }
+    run_tui
+  `]);
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(result.stderr, /Request timed out: check connection/);
+  assert.equal(result.stdout, "");
 });
 
 test("V18 progressive history requires both pipeline statuses", async (t) => {
