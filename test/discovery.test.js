@@ -185,7 +185,7 @@ const streamBrowser = `
   let closed = false;
   chromium.launch = async () => ({
     newPage: async () => ({route:async()=>{}, goto:async()=>({ok:()=>true, status:()=>200}),
-      evaluate:async(fn,arg)=>fn(arg)}),
+      waitForFunction:async()=>{}, evaluate:async(fn,arg)=>fn(arg)}),
     close:async()=>{closed=true;},
   });
   const { streams } = await import("./lib/streams.js");
@@ -197,7 +197,7 @@ for (const stage of ['challenge', 'stream']) {
       let interrupted = false, waits = 0;
       chromium.launch = async () => ({
         newPage: async () => ({route:async()=>{}, goto:async()=>{},
-          waitForLoadState:async()=>{waits++;},
+          waitForFunction:async()=>{}, waitForLoadState:async()=>{waits++;},
           evaluate:async(fn,arg)=>{
             if (!interrupted && ${JSON.stringify(stage)} === (arg ? 'stream' : 'challenge')) {
               interrupted=true;
@@ -217,7 +217,7 @@ test('persistent stream navigation fails after bounded attempts and closes brows
   await isolated(t, `${streamBrowser}
     let calls=0;
     chromium.launch=async()=>({newPage:async()=>({route:async()=>{},goto:async()=>{},
-      waitForLoadState:async()=>{}, evaluate:async()=>{calls++;throw new Error('Execution context was destroyed');}}),
+      waitForFunction:async()=>{}, waitForLoadState:async()=>{}, evaluate:async()=>{calls++;throw new Error('Execution context was destroyed');}}),
       close:async()=>{closed=true;}});
     await assert.rejects(streams('/phim/kimi/tap-06-124.html'),/Execution context was destroyed/);
     assert.equal(calls,3);assert.equal(closed,true);
@@ -229,6 +229,18 @@ test("stream API rejects HTTP errors with actionable status", async (t) => {
     globalThis.fetch = async () => new Response("blocked", {status:403});
     await assert.rejects(streams("/phim/kimi/tap-05-123.html"), /HTTP 403/);
     assert.equal(closed, true);
+  `);
+});
+
+test('stream resolution waits for a document body before evaluating the challenge', async t => {
+  await isolated(t, `${streamBrowser}
+    document.body=null;
+    chromium.launch=async()=>({newPage:async()=>({route:async()=>{},goto:async()=>{},
+      waitForFunction:async()=>{document.body={innerText:'Episode'};},
+      evaluate:async(fn,arg)=>arg?'https://abyssplayer.com/ready':fn(arg)}),
+      close:async()=>{closed=true;}});
+    assert.equal(await streams('/phim/kimi/tap-06-124.html'),'https://abyssplayer.com/ready');
+    assert.equal(closed,true);
   `);
 });
 
