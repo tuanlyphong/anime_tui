@@ -96,7 +96,39 @@ trap '_shutdown INT 130' INT
 trap '_shutdown TERM 143' TERM
 trap '_shutdown HUP 129' HUP
 
+# A distro Node build can be unusable (for example when it is linked against a
+# missing OpenSSL soname). Fall back to a working per-user installation.
+_select_node() {
+  node -e 0 >/dev/null 2>&1 && return 0
+
+  local candidates=() dir
+  [ -n "${NVM_BIN:-}" ] && candidates+=("$NVM_BIN")
+  for dir in "$HOME"/.nvm/versions/node/*/bin; do
+    [ -x "$dir/node" ] && candidates+=("$dir")
+  done
+  for dir in "$HOME"/.local/share/fnm/node-versions/*/installation/bin; do
+    [ -x "$dir/node" ] && candidates+=("$dir")
+  done
+  for dir in "$HOME"/.volta/bin "$HOME"/.local/bin; do
+    [ -x "$dir/node" ] && candidates+=("$dir")
+  done
+  ((${#candidates[@]})) || return 1
+
+  while IFS= read -r dir; do
+    if [ -n "$dir" ] && "$dir/node" -e 0 >/dev/null 2>&1; then
+      PATH="$dir:$PATH"
+      export PATH
+      _warn "Using Node from $dir"
+      return 0
+    fi
+  done < <(printf '%s\n' "${candidates[@]}" | sort -Vru)
+  return 1
+}
+
 _check_deps() {
+  _select_node
+  command -v node >/dev/null && ! node -e 0 >/dev/null 2>&1 &&
+    _die "Node.js cannot run (check its shared libraries) and no working alternative was found."
   local missing=()
   command -v fzf >/dev/null || missing+=(fzf)
   command -v node >/dev/null || missing+=(node)
