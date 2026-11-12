@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -171,4 +171,46 @@ cat >/dev/null
 
   assert.equal(result.code, 0, result.stderr);
   assert.match(await readFile(argsLog, "utf8"), /^--cache=yes$/m);
+});
+
+test("history list is loaded before fzf starts", async (t) => {
+  const directory = await setup(t);
+  const bin = path.join(directory, "bin");
+  await mkdir(bin, { recursive: true });
+
+  const marker = path.join(directory, "cli-events");
+  const resultFile = path.join(directory, "fzf-check");
+  const fakeCli = path.join(directory, "fake-cli");
+  const fakeFzf = path.join(bin, "fzf");
+
+  // Node restores the terminal state it saw at startup when it exits. If it
+  // overlaps with fzf, the restore can switch the tty back to canonical mode
+  // and break arrow keys. The CLI must therefore finish before fzf starts.
+  await writeFile(fakeCli, `#!/bin/bash
+printf 'start\\n' >>${JSON.stringify(marker)}
+sleep 0.4
+printf 'Title\\t/anime\\tposter\\n'
+printf 'done\\n' >>${JSON.stringify(marker)}
+`);
+  await writeFile(fakeFzf, `#!/bin/bash
+if grep -qx done ${JSON.stringify(marker)}; then
+  printf 'sequenced\\n' >${JSON.stringify(resultFile)}
+else
+  printf 'overlap\\n' >${JSON.stringify(resultFile)}
+fi
+cat >/dev/null
+`);
+  await Promise.all([chmod(fakeCli, 0o755), chmod(fakeFzf, 0o755)]);
+
+  const script = `
+    export ANIME_TUI_TESTING=1 HOME=${JSON.stringify(directory)}
+    export ANIME_CLI=${JSON.stringify(fakeCli)}
+    export PATH=${JSON.stringify(bin)}:$PATH
+    source ${JSON.stringify(tui)}
+    _pick_anime history
+  `;
+  const result = await run("/bin/bash", ["-c", script], { env: { TERM: "xterm-256color" } });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(await readFile(resultFile, "utf8"), "sequenced\n");
 });

@@ -145,7 +145,7 @@ _search_rows() (
   local error_file rows
   error_file=$(mktemp) || return 1
   trap 'rm -f "$error_file"' EXIT
-  if rows=$($ANIME_CLI search "$@" 2>"$error_file"); then
+  if rows=$($ANIME_CLI search "$@" </dev/null 2>"$error_file"); then
     printf '\n'
     [ -z "$rows" ] || printf '%s\n' "$rows"
   else
@@ -172,7 +172,15 @@ _pick_anime() {
       toggle_cmd="$ANIME_CLI history-complete {2}"
     fi
 
-    $ANIME_CLI history${completed_flag} | fzf \
+    # Load the list before starting fzf. Node restores its saved terminal
+    # state when it exits, so running it in the fzf pipeline can reset the
+    # tty to canonical mode and break arrow-key navigation.
+    local history_rows
+    history_rows=$($ANIME_CLI history${completed_flag})
+
+    {
+      [ -z "$history_rows" ] || printf '%s\n' "$history_rows"
+    } | fzf \
       --print-query \
       --query "$query" \
       --expect=ctrl-s,ctrl-e \
@@ -186,7 +194,7 @@ _pick_anime() {
       --preview-window 'right:35%' \
       --bind 'resize:refresh-preview' \
       --bind 'ctrl-j:down,ctrl-k:up' \
-      --bind "alt-m:execute-silent($toggle_cmd >/dev/null 2>&1)+reload($ANIME_CLI history${completed_flag} 2>/dev/null || true)"
+      --bind "alt-m:execute-silent($toggle_cmd </dev/null >/dev/null 2>&1)+reload($ANIME_CLI history${completed_flag} </dev/null 2>/dev/null || true)"
   else
     printf '\n' | fzf \
       --print-query \
