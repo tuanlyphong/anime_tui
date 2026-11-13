@@ -78,6 +78,9 @@ if (mode === "resume" && attempt > 1) {
   await fs.writeFile(output, Buffer.concat([segment, secondSegment, tail]));
 } else if (mode === "incomplete" || mode === "resume") {
   console.error("fake incomplete download");
+  // Keep the segment readable long enough for the streaming reader to consume
+  // it before this process exits.
+  if (mode === "incomplete") await new Promise((resolve) => setTimeout(resolve, 150));
 } else if (mode === "wait") {
   setInterval(() => {}, 1000);
 } else {

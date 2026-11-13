@@ -30,7 +30,7 @@ else {
     if(c[0] === 'loadfile') {
      if(observed.size < 3) process.exit(22);
      prop('duration', 1000); prop('time-pos',0);
-     send({event:'file-loaded'});
+     if(mode!=='no-file-loaded') send({event:'file-loaded'});
       prop('demuxer-cache-state', {'seekable-ranges':[{start:0,end:904.94}]});
       if(mode==='end-resume') {
        prop('demuxer-cache-state', {'seekable-ranges':[{start:0,end:1000}]});

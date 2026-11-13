@@ -393,12 +393,12 @@ test("V13 player close cancels pending retry", async (t) => {
 });
 
 for (const [quality, mode, expected, success] of [
-  ["h", "fallback-medium", "hhhhm", true],
-  ["h", "fallback-empty", "hhhhm", true],
-  ["h", "fallback-low", "hhhhmmmml", true],
-  ["m", "fallback-low", "mmmml", true],
+  ["h", "fallback-medium", "hm", true],
+  ["h", "fallback-empty", "hm", true],
+  ["h", "fallback-low", "hml", true],
+  ["m", "fallback-low", "ml", true],
   ["l", "fallback-none", "llll", false],
-  ["h", "fallback-none", "hhhhmmmmllll", false],
+  ["h", "fallback-none", "hmllll", false],
 ]) {
   test(`V25 V26 fallback ${quality} ${mode}`, async (t) => {
     const setup = await setupFakeJava(t);

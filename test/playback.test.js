@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { getProgress, saveProgress } from '../lib/progress.js';
-import { playEpisode } from '../lib/playback.js';
+import { playEpisode, PROGRESSIVE_MEDIA_LOAD_TIMEOUT_MS } from '../lib/playback.js';
 const player = fileURLToPath(new URL('./fixtures/playback-player.js',import.meta.url));
 const animeUrl='/anime', episodeUrl='/episode';
 async function setup(t) {
@@ -57,6 +57,16 @@ test('periodic persistence occurs while the player is still running',async t=>{
  await new Promise(r=>setTimeout(r,5300));
  assert.equal((await getProgress(animeUrl,episodeUrl)).positionSeconds,754);
  assert.equal((await pending).outcome,'stopped');
+});
+test('progressive media load budget covers zero-byte quality fallback',()=>{
+ assert.ok(PROGRESSIVE_MEDIA_LOAD_TIMEOUT_MS>=90000);
+});
+test('media load honors a configured preparation budget',async t=>{
+ await setup(t); const start=Date.now();
+ const result=await playEpisode({streamUrl:'https://example.test/video.mp4',animeUrl,episodeUrl,label:'Episode',player,playerArgs:['--fixture=no-file-loaded'],loadTimeoutMs:150});
+ assert.equal(result.outcome,'failed');
+ assert.match(result.error.message,/mpv did not load media/);
+ assert.ok(Date.now()-start<5000);
 });
 
 async function abyss(t, mode = 'success') {
