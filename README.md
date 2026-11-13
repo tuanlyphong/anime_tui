@@ -103,6 +103,7 @@ Configuration can be supplied through environment variables or a `.env` file bes
 | `ABYSS_PROGRESSIVE` | `1` | Set to `0` to wait for a complete file |
 | `PLAYWRIGHT_EXECUTABLE_PATH` | system Chromium when available | Browser executable used for episode discovery |
 | `ANIME_TUI_REQUEST_TIMEOUT_MS` | `15000` | Timeout per gateway/search HTTP request and stream API request, including response-body reads |
+| `ANIME_TUI_SEARCH_PAGES` | `10` | Search result pages (30 titles each) fetched per query in addition to the quick suggestions |
 
 Example:
 
@@ -131,7 +132,9 @@ You need Node.js, npm, fzf, mpv, Java 21 or a compatible Java runtime, and Chrom
 - Watch history: `~/.local/share/anime-tui/history.json`
 - Episode resume positions and watched status: `~/.local/share/anime-tui/playback-state.json`
 
-Search results expire after one hour. Episode lists are cached for five minutes,
+Search queries combine the site's quick suggestions with up to ten pages of full
+search results (30 titles per page), so broad searches are not limited to the
+six-item suggestion dropdown. Search results expire after one hour. Episode lists are cached for five minutes,
 so returning to episode selection does not launch another browser each time.
 Old cache entries without timestamps are refreshed automatically. Empty search
 results and failed responses are not cached; cache write failures do not block

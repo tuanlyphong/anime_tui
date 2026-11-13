@@ -39,11 +39,18 @@ test("search rejects challenge responses without poisoning later results", async
   await isolated(t, `
     import { client } from "./lib/http.js";
     import { search } from "./lib/search.js";
-    client.post = async () => ({data: "<html><title>Just a moment...</title></html>"});
+    const challenge = async () => ({data: "<html><title>Just a moment...</title></html>"});
+    client.post = challenge;
+    client.get = challenge;
     await assert.rejects(search("kimi"), /search.*response|challenge/i);
     client.post = async () => ({data: '<li><a class="ss-title" href="/anime">Kimi</a></li>'});
-    assert.deepEqual(await search("kimi"), [{title:"Kimi", url:"/anime", poster:""}]);
+    client.get = async () => ({data: '<li class="TPostMv"><article class="TPost"><a href="/anime"><h2 class="Title">Kimi</h2></a></article></li><li class="TPostMv"><article class="TPost"><a href="/anime-2"><h2 class="Title">Kimi 2</h2></a></article></li><div class="wp-pagenavi"><span class="pages">Trang 1 của 1</span></div>'});
+    assert.deepEqual(await search("kimi"), [
+      {title:"Kimi", url:"/anime", poster:""},
+      {title:"Kimi 2", url:"/anime-2", poster:""},
+    ]);
     client.post = async () => { throw new Error("offline"); };
+    client.get = async () => { throw new Error("offline"); };
     assert.equal((await search(" KIMI "))[0].title, "Kimi");
   `);
 });
@@ -55,6 +62,7 @@ test("search and episode cache keys cannot collide", async (t) => {
     import { search } from "./lib/search.js";
     await cache.put("episodes:/phim/kimi", [{title:"05", url:"/episode"}]);
     client.post = async () => ({data:'<li class="ss-bottom"><a id="suggest-all">Search</a></li>'});
+    client.get = async () => ({data:'<div class="movie-list-noresult">Kết quả không tìm thấy!</div>'});
     assert.deepEqual(await search("episodes:/phim/kimi"), []);
   `);
 });
@@ -64,6 +72,7 @@ test("valid empty searches remain empty instead of reporting a challenge", async
     import { client } from "./lib/http.js";
     import { search } from "./lib/search.js";
     client.post = async () => ({data:'<li class="ss-bottom"><a id="suggest-all">Search</a></li>'});
+    client.get = async () => ({data:'<div class="movie-list-noresult">Kết quả không tìm thấy!</div>'});
     assert.deepEqual(await search("missing"), []);
   `);
 });
@@ -75,7 +84,72 @@ test("an unwritable cache does not prevent a successful search", async (t) => {
     const { client } = await import("./lib/http.js");
     const { search } = await import("./lib/search.js");
     client.post = async () => ({data: '<li><a class="ss-title" href="/anime">Kimi</a></li>'});
+    client.get = async () => ({data: '<div class="movie-list-noresult">Kết quả không tìm thấy!</div>'});
     assert.equal((await search("kimi"))[0].title, "Kimi");
+  `);
+});
+
+test("search merges suggestion entries with every fetched result page", async (t) => {
+  await isolated(t, `
+    import { client } from "./lib/http.js";
+    import { search } from "./lib/search.js";
+    const page = (start, count, pages) =>
+      '<ul>' + Array.from({length: count}, (_, index) =>
+        '<li class="TPostMv"><article class="TPost"><a href="/anime-' + (start + index) +
+        '"><h2 class="Title">Anime ' + (start + index) + '</h2></a></article></li>'
+      ).join("") + '</ul>' +
+      (pages ? '<div class="wp-pagenavi"><span class="pages">Trang 1 của ' + pages + '</span></div>' : "");
+    client.post = async () => ({data:'<li><a class="ss-title" href="/suggestion">Suggested</a></li>'});
+    const calls = [];
+    client.get = async (path) => {
+      calls.push(path);
+      return {data: path.endsWith("/trang-2.html") ? page(7, 2) : page(0, 7, 2)};
+    };
+    const results = await search("many");
+    assert.equal(results.length, 10);
+    assert.equal(results[0].title, "Suggested");
+    assert.deepEqual(calls, ["/tim-kiem/many/", "/tim-kiem/many/trang-2.html"]);
+  `);
+});
+
+test("search stops at the configured result page limit", async (t) => {
+  await isolated(t, `
+    import { client } from "./lib/http.js";
+    import { search, MAX_SEARCH_PAGES } from "./lib/search.js";
+    assert.equal(MAX_SEARCH_PAGES, 2);
+    client.post = async () => ({data:'<li class="ss-bottom"><a id="suggest-all">Search</a></li>'});
+    const calls = [];
+    client.get = async (path) => {
+      calls.push(path);
+      return {data: '<li class="TPostMv"><article class="TPost"><a href="' + path +
+        '"><h2 class="Title">Result</h2></a></article></li>' +
+        '<div class="wp-pagenavi"><span class="pages">Trang 1 của 7</span></div>'};
+    };
+    assert.equal((await search("many")).length, 2);
+    assert.equal(calls.length, 2);
+  `, { ANIME_TUI_SEARCH_PAGES: "2" });
+});
+
+test("HTTP cookie challenge is retried with the session cookie", async (t) => {
+  await isolated(t, `
+    import { createServer } from "node:http";
+    import { client } from "./lib/http.js";
+    let calls = 0;
+    const server = createServer((req, res) => {
+      calls++;
+      if (!req.headers.cookie) {
+        res.writeHead(403, {"Set-Cookie":"session=1; Path=/", "Content-Type":"text/html"});
+        res.end('<script>window.location.href = "/";</script>');
+        return;
+      }
+      res.writeHead(200, {"Content-Type":"text/html"});
+      res.end("ok");
+    });
+    await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+    try {
+      assert.equal((await client.get("http://127.0.0.1:" + server.address().port + "/")).data, "ok");
+      assert.equal(calls, 2);
+    } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
   `);
 });
 
